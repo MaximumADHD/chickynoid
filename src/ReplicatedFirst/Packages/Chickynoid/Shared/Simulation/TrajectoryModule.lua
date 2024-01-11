@@ -1,12 +1,16 @@
+--!strict
+
 local RunService = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 
 local module = {}
+type Self = typeof(module)
 
-function module:PositionWorld(serverTime, deltaTime)
+function module.PositionWorld(self: Self, serverTime: number, deltaTime: number)
     if true then
         return
     end
+
     local movers = CollectionService:GetTagged("Dynamic")
 
     for _, value: BasePart in pairs(movers) do
@@ -19,13 +23,17 @@ function module:PositionWorld(serverTime, deltaTime)
     end
 end
 
-function module:ServerInit()
+function module.ServerInit(self: Self)
     if true then
         return
     end
+
     local movers = CollectionService:GetTagged("Dynamic")
-    for _, value: BasePart in pairs(movers) do
-        value:SetAttribute("BasePos", value.Position)
+
+    for _, value in pairs(movers) do
+        if value:IsA("BasePart") then
+            value:SetAttribute("BasePos", value.Position)
+        end
     end
 end
 
