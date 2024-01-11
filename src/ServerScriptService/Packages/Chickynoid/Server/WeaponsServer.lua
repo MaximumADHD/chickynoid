@@ -226,7 +226,7 @@ function module:QueryBullet(playerRecord, server, origin, dir, serverTime, debug
         range = 1000
     end
 
-    local rayCastResult = game.Workspace:Raycast(origin, dir * range, raycastParams)
+    local rayCastResult = workspace:Raycast(origin, dir * range, raycastParams)
 
     local pos = nil
     local normal = nil
@@ -268,7 +268,7 @@ function module:QueryShotgun(playerRecord, server, origins, directions, serverTi
             continue
         end
     
-        local rayCastResult = game.Workspace:Raycast(origin, dir * range, raycastParams)
+        local rayCastResult = workspace:Raycast(origin, dir * range, raycastParams)
 
         if rayCastResult == nil then
             local record = {}
@@ -317,8 +317,8 @@ function module:Think(server, deltaTime)
         --Trace a line
         local params = RaycastParams.new()
         params.FilterType = Enum.RaycastFilterType.Include
-        params.FilterDescendantsInstances = { game.Workspace.Terrain, server:GetCollisionRoot() }
-        local results = game.Workspace:Raycast(oldPos, rocket.pos - oldPos, params)
+        params.FilterDescendantsInstances = { workspace.Terrain, server:GetCollisionRoot() }
+        local results = workspace:Raycast(oldPos, rocket.pos - oldPos, params)
         if results ~= nil then
             timePassed = 1000 --Boom
             rocket.n = results.Normal
@@ -382,7 +382,7 @@ function module:RayTestPlayers(rayOrigin, vec, server)
         return nil
     end
 
-    local rayCastResult = game.Workspace:Raycast(rayOrigin, vec)
+    local rayCastResult = workspace:Raycast(rayOrigin, vec)
     return rayCastResult
 end
 

@@ -171,15 +171,15 @@ function module.VisualizePlanesForPoints(self: Self, points: {Vector3}, debugPar
 end
 
 
-function module.VisualizeTriangles(_self: Self, tris: {{Vector3}}, offset: Vector3)
+function module.VisualizeTriangles(self: Self, tris: {{Vector3}}, offset: Vector3)
 	local color = Color3.fromHSV(math.random(), 0.5, 1)
 	
     --Add triangles
     for _, tri  in pairs(tris) do
 		local a, b = TrianglePart:Triangle(tri[1] + offset, tri[2] + offset, tri[3] + offset)
-        a.Parent = game.Workspace.Terrain
+        a.Parent = workspace.Terrain
         a.Color = color
-        b.Parent = game.Workspace.Terrain
+        b.Parent = workspace.Terrain
 		b.Color = color
 		
 		
@@ -189,7 +189,7 @@ function module.VisualizeTriangles(_self: Self, tris: {{Vector3}}, offset: Vecto
 		local instance = Instance.new("Part")
 		instance.Size =Vector3.new(0.1,0.1,2)
 		instance.CFrame = CFrame.lookAt( pos + (normal), pos + (normal*2))
-		instance.Parent = game.Workspace.Terrain
+		instance.Parent = workspace.Terrain
 		instance.CanCollide = false
 		instance.Anchored = true
 		
@@ -224,7 +224,7 @@ end
 
 --Same thing but for worldspace point cloud
 
-function module.GetPlanePointForPoints(_self: Self, points: {Vector3}): {PlaneRecord}
+function module.GetPlanePointForPoints(self: Self, points: {Vector3}): {PlaneRecord}
 	--Run quickhull
 	local r = QuickHull2.GenerateHull(points)
 	local recs = {}
@@ -433,7 +433,7 @@ function module.GetRaytraceInstancePoints(self: Self, instance: MeshPart, cframe
 		for key,point in pairs(finals) do
 
 			local debugInstance = Instance.new("Part")
-			debugInstance.Parent = game.Workspace
+			debugInstance.Parent = workspace
 			debugInstance.Anchored = true
 			debugInstance.Size = Vector3.new(1,1,1)
 			debugInstance.Position = point
@@ -441,7 +441,7 @@ function module.GetRaytraceInstancePoints(self: Self, instance: MeshPart, cframe
 			debugInstance.Color = Color3.new(0,1,0)
 		end
 		
-		self:VisualizePlanesForPoints(finals, game.Workspace)
+		self:VisualizePlanesForPoints(finals, workspace)
 	end
  
 	self.timeSpentTracing += tick() - start

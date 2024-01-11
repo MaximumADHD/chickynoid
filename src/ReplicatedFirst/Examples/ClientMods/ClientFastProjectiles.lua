@@ -59,7 +59,7 @@ function module:Step(_client, deltaTime)
             bulletRecord.part.Shape = Enum.PartType.Ball
             bulletRecord.part.Material = Enum.Material.Neon
             bulletRecord.part.Color = Color3.new(1,1,1)
-            bulletRecord.part.Parent = game.Workspace
+            bulletRecord.part.Parent = workspace
         end
         
         local lastPos = bulletRecord.position

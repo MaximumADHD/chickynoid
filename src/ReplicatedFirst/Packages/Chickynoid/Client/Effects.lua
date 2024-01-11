@@ -16,7 +16,7 @@ function module:SpawnEffect(name, pos)
 
     local clone = src:Clone() :: BasePart
     clone.Position = pos
-    clone.Parent = game.Workspace
+    clone.Parent = workspace
 
     local record = {}
     record.instance = clone

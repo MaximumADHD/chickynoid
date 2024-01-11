@@ -9,8 +9,8 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local RemoteEvent = ReplicatedStorage:WaitForChild("ChickynoidReplication") :: RemoteEvent
-local UnreliableRemoteEvent = ReplicatedStorage:WaitForChild("ChickynoidUnreliableReplication") :: UnreliableRemoteEvent
+local UnreliableRemoteEvent = ReplicatedStorage:WaitForChild("ChickynoidUnreliableReplication")
+assert(UnreliableRemoteEvent:IsA("UnreliableRemoteEvent"))
 
 local path = game.ReplicatedFirst.Packages.Chickynoid
 local Simulation = require(path.Shared.Simulation.Simulation)

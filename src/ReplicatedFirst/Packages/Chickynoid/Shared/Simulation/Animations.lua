@@ -1,8 +1,7 @@
 local module = {}
-
 module.animations = {}		--num, string
 module.reverseLookups = {} --string, num
-	
+
 function module:RegisterAnimation(name : string)
 	if (self.reverseLookups[name] ~= nil) then
 		return self.reverseLookups[name]
@@ -10,7 +9,7 @@ function module:RegisterAnimation(name : string)
 	
 	table.insert(self.animations, name)
 	local index = #self.animations
-	self.reverseLookups[name] = index	
+	module.reverseLookups[name] = index	
 end
 
 function module:GetAnimationIndex(name : string) : number

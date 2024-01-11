@@ -185,19 +185,19 @@ end
 
 function module:GetAimPoint()
     local mouse = game.Players.LocalPlayer:GetMouse()
-    local ray = game.Workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y)
+    local ray = workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y)
 
     local raycastParams = RaycastParams.new()
     raycastParams.FilterType = Enum.RaycastFilterType.Include
 
-    local whiteList = { game.Workspace.Terrain }
+    local whiteList = { workspace.Terrain }
     local collisionRoot = self.client:GetCollisionRoot()
     if (collisionRoot) then
         table.insert(whiteList, collisionRoot)
     end
     raycastParams.FilterDescendantsInstances = whiteList
 
-    local raycastResults = game.Workspace:Raycast(ray.Origin, ray.Direction * 2000, raycastParams)
+    local raycastResults = workspace:Raycast(ray.Origin, ray.Direction * 2000, raycastParams)
     if raycastResults then
         return raycastResults.Position
     end

@@ -506,11 +506,11 @@ function ServerModule:RobloxPhysicsStep(deltaTime)
 end
 
 function ServerModule:GetDoNotReplicate()
-    local camera = game.Workspace:FindFirstChild("DoNotReplicate")
+    local camera = workspace:FindFirstChild("DoNotReplicate")
     if camera == nil then
         camera = Instance.new("Camera")
         camera.Name = "DoNotReplicate"
-        camera.Parent = game.Workspace
+        camera.Parent = workspace
     end
     return camera
 end

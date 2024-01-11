@@ -149,7 +149,7 @@ function CharacterModel:CreateModel()
 		self.modelReady = true
 		self:PlayAnimation(self.startingAnimation, true)
 				
-		self.model.Parent = game.Workspace
+		self.model.Parent = workspace
 		self.onModelCreated:Fire(self.model)
 		self.coroutineStarted = false
 	end)

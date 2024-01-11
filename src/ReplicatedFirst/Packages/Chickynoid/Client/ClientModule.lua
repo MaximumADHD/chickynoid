@@ -81,7 +81,7 @@ ClientModule.characterModel = nil
 
 --Server provided collision data
 ClientModule.playerSize = Vector3.new(2,5,5)
-ClientModule.collisionRoot = game.Workspace           
+ClientModule.collisionRoot = workspace           
 
 --Milliseconds of *extra* buffer time to account for ping flux
 ClientModule.interpolationBuffer = 20
@@ -620,7 +620,7 @@ function ClientModule:ProcessFrame(deltaTime)
 
             -- Bind the camera
             if (self.flags.HANDLE_CAMERA ~= false) then
-				local camera = game.Workspace.CurrentCamera
+				local camera = workspace.CurrentCamera
 				
 				if (self.flags.USE_PRIMARY_PART == true) then
 					--if you dont care about first person, this is the correct way to do it
@@ -722,7 +722,7 @@ function ClientModule:ProcessFrame(deltaTime)
 
     --bulkMoveTo
 	if (bulkMoveToList) then
-        game.Workspace:BulkMoveTo(bulkMoveToList.parts, bulkMoveToList.cframes, Enum.BulkMoveMode.FireCFrameChanged)
+        workspace:BulkMoveTo(bulkMoveToList.parts, bulkMoveToList.cframes, Enum.BulkMoveMode.FireCFrameChanged)
 
     end
 
@@ -874,7 +874,7 @@ function ClientModule:DrawBoxOnAllPlayers(text)
         instance.CanTouch = false
         instance.CanQuery = false
         instance.Position = record.position
-        instance.Parent = game.Workspace
+        instance.Parent = workspace
 
         self:AdornText(instance, Vector3.new(0,3,0), text, Color3.new(0.5,1,0.5))
 
@@ -899,7 +899,7 @@ function ClientModule:DebugBox(pos, text)
     instance.CanTouch = false
     instance.CanQuery = false
     instance.Position = pos
-    instance.Parent = game.Workspace
+    instance.Parent = workspace
 
     local adornment = Instance.new("SelectionBox")
     adornment.Adornee = instance
