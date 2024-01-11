@@ -5,6 +5,8 @@
 
 	@class ScriptSignal
 ]=]
+--!strict
+
 local ScriptSignal = {}
 ScriptSignal.__index = ScriptSignal
 
@@ -26,14 +28,14 @@ ScriptConnection.__index = ScriptConnection
 	@ignore
 ]=]
 
-export type Class = typeof(setmetatable({
-    _active = true,
-    _head = nil :: ScriptConnectionNode?,
+export type Class = typeof(setmetatable({} :: {
+    _active: boolean,
+    _head: ScriptConnectionNode?,
 }, ScriptSignal))
 
-export type ScriptConnection = typeof(setmetatable({
-    Connected = true,
-    _node = nil :: ScriptConnectionNode?,
+export type ScriptConnection = typeof(setmetatable({} :: {
+    Connected: boolean,
+    _node: ScriptConnectionNode?,
 }, ScriptConnection))
 
 type ScriptConnectionNode = {
@@ -48,11 +50,10 @@ type ScriptConnectionNode = {
 local FreeThread: thread? = nil
 
 local function RunHandlerInFreeThread(handler, ...)
-    local thread = FreeThread :: thread
+    local thread = FreeThread
     FreeThread = nil
 
     handler(...)
-
     FreeThread = thread
 end
 
@@ -108,7 +109,7 @@ end
 	@return boolean
 	@ignore
 ]=]
-function ScriptSignal:IsActive(): boolean
+function ScriptSignal.IsActive(self: Class): boolean
     return self._active == true
 end
 
@@ -130,7 +131,7 @@ end
 	@return ScriptConnection
 	@ignore
 ]=]
-function ScriptSignal:Connect(handler: (...any) -> ()): ScriptConnection
+function ScriptSignal.Connect(self: Class, handler: (...any) -> ()): ScriptConnection
     assert(typeof(handler) == "function", "Must be function")
 
     if self._active ~= true then
@@ -140,10 +141,10 @@ function ScriptSignal:Connect(handler: (...any) -> ()): ScriptConnection
         }, ScriptConnection)
     end
 
-    local _head: ScriptConnectionNode? = self._head
+    local _head = self._head
 
     local node: ScriptConnectionNode = {
-        _signal = self :: Class,
+        _signal = self,
         _connection = nil,
         _handler = handler,
 
@@ -185,7 +186,7 @@ end
 	@param handler (...: any) -> ()
 	@ignore
 ]=]
-function ScriptSignal:ConnectOnce(handler: (...any) -> ())
+function ScriptSignal.ConnectOnce(self: Class, handler: (...any) -> ())
     assert(typeof(handler) == "function", "Must be function")
 
     local connection
@@ -213,7 +214,7 @@ end
 	@return ...any
 	@ignore
 ]=]
-function ScriptSignal:Wait(): (...any)
+function ScriptSignal.Wait(self: Class): (...any)
     local thread
     do
         thread = coroutine.running()
@@ -244,15 +245,16 @@ end
 	@param ... any
 	@ignore
 ]=]
-function ScriptSignal:Fire(...: any)
-    local node: ScriptConnectionNode? = self._head
+function ScriptSignal.Fire(self: Class, ...: any)
+    local node = self._head
+    
     while node ~= nil do
         if node._connection ~= nil then
             if FreeThread == nil then
                 task.spawn(CreateFreeThread)
             end
 
-            task.spawn(FreeThread :: thread, node._handler, ...)
+            task.spawn(assert(FreeThread), node._handler, ...)
         end
 
         node = node._next
@@ -272,8 +274,9 @@ end
 
 	@ignore
 ]=]
-function ScriptSignal:DisconnectAll()
-    local node: ScriptConnectionNode? = self._head
+function ScriptSignal.DisconnectAll(self: Class)
+    local node = self._head
+
     while node ~= nil do
         local _connection = node._connection
 
@@ -301,7 +304,7 @@ end
 
 	@ignore
 ]=]
-function ScriptSignal:Destroy()
+function ScriptSignal.Destroy(self: Class)
     if self._active ~= true then
         return
     end
@@ -324,16 +327,16 @@ end
 
 	@ignore
 ]=]
-function ScriptConnection:Disconnect()
+function ScriptConnection.Disconnect(self: ScriptConnection)
     if self.Connected ~= true then
         return
     end
 
     self.Connected = false
 
-    local _node: ScriptConnectionNode = self._node
-    local _prev = _node._prev
-    local _next = _node._next
+    local _node = self._node
+    local _prev = _node and _node._prev
+    local _next = _node and _node._next
 
     if _next ~= nil then
         _next._prev = _prev
@@ -341,13 +344,15 @@ function ScriptConnection:Disconnect()
 
     if _prev ~= nil then
         _prev._next = _next
-    else
+    elseif _node then
         -- _node == _signal._head
-
         _node._signal._head = _next
     end
 
-    _node._connection = nil
+    if _node then
+        _node._connection = nil
+    end
+
     self._node = nil
 end
 ScriptConnection.Destroy = ScriptConnection.Disconnect
