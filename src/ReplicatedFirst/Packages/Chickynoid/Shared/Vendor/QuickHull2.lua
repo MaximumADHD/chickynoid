@@ -2,44 +2,59 @@
 --https://github.com/OskarSigvardsson/unity-quickhull/blob/master/Scripts/ConvexHullCalculator.cs
 --Which is under the MIT license
 
+--!strict
 local module = {}
 
 local UNASSIGNED = -2
 local INSIDE = -1
 local EPSILON = 0.0001
-local NaN = math.NaN
+local NaN = 0 / 0
 local counter = 0
+
+type HullFace = {
+    Vertex0: number,
+    Vertex1: number,
+    Vertex2: number,
+    Opposite0: number,
+    Opposite1: number,
+    Opposite2: number,
+    Normal: Vector3,
+}
+
+type PointFace = {
+    Point: number,
+    Face: number,
+    Distance: number,
+}
+
+type HorizonEdge = {
+    Face: number,
+    Edge0: number,
+    Edge1: number,
+}
 
 --Notes: openSetTail correctly bumped to be 1-based
 
-local function Cross(a, b) 
-    return Vector3.new(
-        a.y*b.z - a.z*b.y,
-        a.z*b.x - a.x*b.z,
-        a.x*b.y - a.y*b.x)
-end
+local Cross = Vector3.one.Cross
+local Dot = Vector3.one.Dot
 
-local function Dot(a, b) 
-    return a.x*b.x + a.y*b.y + a.z*b.z
-end
-
- local function PointFaceDistance(point, pointOnFace, face) 
+local function PointFaceDistance(point: Vector3, pointOnFace: Vector3, face: HullFace): number 
     return Dot(face.Normal, point - pointOnFace)
 end
  
-local function Normal(v0, v1, v2) 
+local function Normal(v0: Vector3, v1: Vector3, v2: Vector3): Vector3
     return Cross(v1 - v0, v2 - v0).Unit
 end
  
-local function AreCoincident(a, b) 
+local function AreCoincident(a: Vector3, b: Vector3): boolean
     return (a - b).Magnitude <= EPSILON
 end
 
-local function AreCollinear(a, b, c) 
+local function AreCollinear(a: Vector3, b: Vector3, c: Vector3): boolean
     return Cross(c - a, c - b).Magnitude <= EPSILON
 end
  
-local function AreCoplanar(a, b, c, d) 
+local function AreCoplanar(a: Vector3, b: Vector3, c: Vector3, d: Vector3): boolean
     local n1 = Cross(c - a, c - b)
     local n2 = Cross(d - a, d - b)
 
@@ -51,8 +66,8 @@ local function AreCoplanar(a, b, c, d)
         or AreCollinear(Vector3.zero, (1.0 / m1) * n1, (1.0 / m2) * n2)
 end
 
-local function Face(v0, v1, v2, o0, o1, o2, normal)
 
+local function Face(v0: number, v1: number, v2: number, o0: number, o1: number, o2: number, normal: Vector3): HullFace
     return {
         Vertex0 = v0,
         Vertex1 = v1,
@@ -64,17 +79,7 @@ local function Face(v0, v1, v2, o0, o1, o2, normal)
     }
 end
 
-function FaceEquals(left, other)
-    return (left.Vertex0   == other.Vertex0)
-        and (left.Vertex1   == other.Vertex1)
-        and (left.Vertex2   == other.Vertex2)
-        and (left.Opposite0 == other.Opposite0)
-        and (left.Opposite1 == other.Opposite1)
-        and (left.Opposite2 == other.Opposite2)
-        and (left.Normal    == other.Normal)
-end
-
-local function PointFace(p, f, d) 
+local function PointFace(p: number, f: number, d: number): PointFace
     return {
         Point = p,
 		Face = f,
@@ -82,7 +87,7 @@ local function PointFace(p, f, d)
     }
 end
 
-local function HorizonEdge(f, e0, e1)
+local function HorizonEdge(f: number, e0: number, e1: number): HorizonEdge
     return {
 		Face = f, 
         Edge0 = e0,
@@ -90,66 +95,22 @@ local function HorizonEdge(f, e0, e1)
     }
 end
 
-local function Contains(list, item)
-    for key,value in pairs(list) do
-        
-        if (item == value) then
-            return true
-        end
-    end
-    return false
+local function Contains<T>(list: {T}, item: T)
+    return table.find(list, item) ~= nil
 end
 
-local function Count(list)
+local function Count<T>(list: {T}): number
     return #list
 end
 
 
-local faces = {}
-local openSet = {}
-local litFaces = {}
-local horizon = {}
+local faces = {} :: { HullFace }
+local openSet = {} :: { PointFace }
+local litFaces = {} :: { number }
+local horizon = {} :: { HorizonEdge }
 
 local openSetTail = -1
 local faceCount = 0
-
-
-
-local function HasEdge(f, e0, e1) 
-    return (f.Vertex0 == e0 and f.Vertex1 == e1)
-        or (f.Vertex1 == e0 and f.Vertex2 == e1)
-        or (f.Vertex2 == e0 and f.Vertex0 == e1)
-end
-
-local function VerifyFaces(points)
-    for kvpKey, kpvValue in pairs(faces) do
-        local fi = kvpKey
-        local face = kpvValue
-
-        assert(faces[face.Opposite0] ~= nil)
-		assert(faces[face.Opposite1] ~= nil)
-		assert(faces[face.Opposite2] ~= nil)
-
-		assert(face.Opposite0 ~= fi)
-		assert(face.Opposite1 ~= fi)
-		assert(face.Opposite2 ~= fi)
-
-        assert(face.Vertex0 ~= face.Vertex1)
-        assert(face.Vertex0 ~= face.Vertex2)
-        assert(face.Vertex1 ~= face.Vertex2)
-
-		assert(HasEdge(faces[face.Opposite0], face.Vertex2, face.Vertex1))
-		assert(HasEdge(faces[face.Opposite1], face.Vertex0, face.Vertex2))
-		assert(HasEdge(faces[face.Opposite2], face.Vertex1, face.Vertex0))
-
-       --[[ assert((face.Normal - Normal(
-                    points[face.Vertex0],
-                    points[face.Vertex1],
-                    points[face.Vertex2])).Magnitude < EPSILON)]]--
-    end
-end
- 
-
 
 --[[
     Reassign points based on the new faces added by ConstructCone().
@@ -169,16 +130,7 @@ end
     a list is pretty darn fast. Still, it might be worth trying
 ]]--
 
-local function ReassignPoints(points)
-	
-	if (false) then
-		for key,value in pairs(openSet) do
-			print("OpenSet" , value.Face-1, value.Point-1, value.Distance)
-		end
-		for key,value in pairs(faces) do
-			print( "Face" , key-1, value.Vertex0-1 )
-		end
-	end
+local function ReassignPoints(points: {Vector3})
     --0123
 	--for (int i = 0; i <= openSetTail; i++)
 	local i = 0
@@ -247,41 +199,6 @@ local function ReassignPoints(points)
 		end
 	end
 end
-
-local function VerifyOpenSet(points)
-    --for (int i = 0; i < openSet.Count; i++) --@@@
-    for i=1, Count(openSet) do --@@@
-        if (i > openSetTail) then
-            assert(openSet[i].Face == INSIDE)
-        else 
-            assert(openSet[i].Face ~= INSIDE)
-            assert(openSet[i].Face ~= UNASSIGNED)
-
-            assert(PointFaceDistance(
-                    points[openSet[i].Point],
-                    points[faces[openSet[i].Face].Vertex0],
-                    faces[openSet[i].Face]) > 0.0)
-        end
-    end
-end
-
-local function VerifyHorizon()
-	--for (int i = 0; i < horizon.Count; i++) --@@@
-	
-    for i = 1, Count(horizon) do --@@@
-        --local prev = i == 0 ? horizon.Count - 1 : i - 1
-		local prev 
-		if (i == 1) then --i == 0 --@@@
-            prev = Count(horizon)  --Last index
-        else
-            prev = i - 1
-        end
-
-        assert(horizon[prev].Edge1 == horizon[i].Edge0)
-        assert(HasEdge(faces[horizon[i].Face], horizon[i].Edge1, horizon[i].Edge0))
-    end
-end
-
 --   Recursively search to find the horizon or lit set.
 local function SearchHorizon(points, point, prevFaceIndex, faceCount, face)
     --assert(prevFaceIndex >= 0)
@@ -379,7 +296,7 @@ end
     visited, the one you came from).
 ]]--
 
-local function FindHorizon(points, point, fi, face)
+local function FindHorizon(points: {Vector3}, point: Vector3, fi: number, face: HullFace)
 
 	-- TODO should I use epsilon in the PointFaceDistance comparisons?
 
@@ -412,9 +329,9 @@ local function FindHorizon(points, point, fi, face)
  
 
     if (Contains(litFaces, face.Opposite1) == false) then
-        local oppositeFace = faces[face.Opposite1]
+        oppositeFace = faces[face.Opposite1]
 
-        local dist = PointFaceDistance(
+        dist = PointFaceDistance(
             point,
             points[oppositeFace.Vertex0],
             oppositeFace);
@@ -427,9 +344,11 @@ local function FindHorizon(points, point, fi, face)
     end
 
     if (Contains(litFaces, face.Opposite2) == false) then
-        local oppositeFace = faces[face.Opposite2]
+        oppositeFace = faces[face.Opposite2]
 
-        local dist = PointFaceDistance(point, points[oppositeFace.Vertex0], oppositeFace)
+        dist = PointFaceDistance(point,
+            points[oppositeFace.Vertex0],
+            oppositeFace)
 
         if (dist <= 0.0) then
             table.insert(horizon, HorizonEdge(face.Opposite2, face.Vertex0, face.Vertex1))
@@ -445,7 +364,7 @@ end
 	seed hull
 ]]--	
 
-local function FindInitialHullIndices(points)
+local function FindInitialHullIndices(points: {Vector3})
     local count = Count(points)
 
     --for (int i0 = 0; i0 < count - 3; i0++) ---@@@@
@@ -483,7 +402,7 @@ local function FindInitialHullIndices(points)
     error("Can't generate hull, points are coplanar")
 end
 
-local function GenerateInitialHull(points) 
+local function GenerateInitialHull(points: {Vector3}) 
     --[[
         Find points suitable for use as the seed hull. Some varieties of
         this algorithm pick extreme points here, but I'm not convinced
@@ -657,7 +576,7 @@ end
    the cone.
 ]]--
  
-local function ConstructCone(points, farthestPoint)
+local function ConstructCone(points: {Vector3}, farthestPoint: number)
     
     --foreach (var fi in litFaces)  ---@@
     for _,fi in pairs(litFaces) do
@@ -735,7 +654,7 @@ end
         from its face.
 ]]--
 
-local function GrowHull(points)
+local function GrowHull(points: {Vector3})
 	
 	--print("GROW HULL", counter)
 	counter+=1
@@ -775,8 +694,8 @@ local function GrowHull(points)
 end
 
 
-function module:GenerateHull(points)
-    if (#points < 4)  then
+function module.GenerateHull(points: {Vector3}): {{Vector3}}?
+    if #points < 4  then
         return nil
     end
     
@@ -790,19 +709,21 @@ function module:GenerateHull(points)
 
     GenerateInitialHull(points)
 
-    while (openSetTail >= 1) do
+    while openSetTail >= 1 do
         GrowHull(points)
 	end
 	
 	--unroll
 	local tris = {}
-	for key,value in pairs(faces) do
+
+	for key, value in pairs(faces) do
 		local tri = {}
 		table.insert(tri, points[value.Vertex0])
 		table.insert(tri, points[value.Vertex1])
 		table.insert(tri, points[value.Vertex2])
 		table.insert(tris, tri)
 	end
+
 	return tris
 end
 
