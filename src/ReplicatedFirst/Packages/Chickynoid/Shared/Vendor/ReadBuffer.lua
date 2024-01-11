@@ -1,53 +1,57 @@
 local module = {}
-
-local module = {}
 module.__index = module
 
-function module.new(buf : buffer)
+export type Class = typeof(setmetatable({} :: {
+	offset: number,
+	buf: buffer,
+}, module))
+
+function module.new(buf: buffer): Class
 	local self = setmetatable({
 		offset = 0,
 		buf = buf,
 	},module)
+
 	return self
 end
 
-function module:ResetReadPos()
+function module.ResetReadPos(self: Class)
 	self.offset = 0
 end
 
-function module:ReadU8()
-
+function module.ReadU8(self: Class): number
 	local data = buffer.readu8(self.buf, self.offset)
-	self.offset+=1
+	self.offset += 1
+
 	return data
 end
 
-
-function module:ReadI16()
+function module.ReadI16(self: Class): number
 	local data = buffer.readu16(self.buf, self.offset)
-	self.offset+=2
+	self.offset += 2
 	return data
 end
 
-function module:ReadVector3()
-	
-	local x,y,z
+function module.ReadVector3(self: Class): Vector3
+	local x, y, z
 	x = buffer.readf32(self.buf, self.offset)
-	self.offset+=4
+	self.offset += 4
+
 	y = buffer.readf32(self.buf, self.offset)
-	self.offset+=4
+	self.offset += 4
+
 	z = buffer.readf32(self.buf, self.offset)
-	self.offset+=4
-	return Vector3.new(x,y,z)
+	self.offset += 4
+
+	return Vector3.new(x, y, z)
 end
 
-
-function module:ReadFloat16() 
-
+function module.ReadFloat16(self: Class): number
 	local b0 = buffer.readu8(self.buf, self.offset)
-	self.offset+=1
+	self.offset += 1
+
 	local b1 = buffer.readu8(self.buf, self.offset)
-	self.offset+=1
+	self.offset += 1
 
 	local sign = bit32.btest(b0, 128)
 	local exponent = bit32.rshift(bit32.band(b0, 127), 2)
@@ -68,9 +72,7 @@ function module:ReadFloat16()
 	end
 
 	mantissa = (mantissa / 1024) + 1
-
 	return (sign and -math.ldexp(mantissa, exponent - 15) or math.ldexp(mantissa, exponent - 15))
 end
 
- 
 return module
