@@ -14,7 +14,7 @@ type CollisionModule = typeof(module)
 type HullRecord = MinkowskiSumInstance.HullRecord
 
 type PartRecord = {
-    instance: BasePart,
+    instance: BasePart?,
     hull: {HullRecord}?,
 }
 
@@ -373,6 +373,11 @@ function module.FetchHullsForBox(self: CollisionModule, min: Vector3, max: Vecto
     
 	--Inflate missing hulls
     for record in hullMap do
+        if not record.instance then
+            -- should never happen?
+            continue
+        end
+        
     	if record.hull == nil then
             local hull = self:GenerateConvexHullAccurate(record.instance, module.expansionSize, self:GenerateSnappedCFrame(record.instance))
 			

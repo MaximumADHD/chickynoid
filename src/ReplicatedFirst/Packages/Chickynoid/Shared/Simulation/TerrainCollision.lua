@@ -1,23 +1,30 @@
 --!native
+--!strict
+
 local RunService = game:GetService("RunService")
 
 local MinkowskiSumInstance = require(script.Parent.MinkowskiSumInstance)
+type PlaneRecord = MinkowskiSumInstance.PlaneRecord
+type HullRecord = MinkowskiSumInstance.HullRecord
 
 local module = {}
-module.grid = {}
+module.grid = {} :: {
+	[Vector3]: {PartRecord}
+}
+
 module.div = 0
 module.counter = 0
+module.gridSize = 4
+module.boxSize = 4
 module.planeNum = 1000000
 module.expansionSize = Vector3.new(1, 1, 1)
 module.boxCorners = {}
-
 module.hullCache = {}
 
 local cutoff = 0.20
 local terrainQuantization = 8
 local showHulls = false
 local showCells = false
-
 
 local corners = {
     Vector3.new(0.5, 0.5, 0.5),
@@ -30,34 +37,51 @@ local corners = {
     Vector3.new(-0.5, -0.5, -0.5),
 }
 
-function module:RawFetchCell(key)
+type Self = typeof(module)
+
+type TerrainVoxels<T> = {
+	Size: Vector3,
+
+	[number]: { -- X
+		[number]: { -- Y
+			[number]: T, -- Z
+		}
+	}
+}
+
+type PartRecord = {
+	instance: BasePart?,
+	hull: {HullRecord},
+}
+
+function module.RawFetchCell(self: Self, key: Vector3)
     --store in x,z,y order
     
     return self.grid[key]
 end
 
-function module:FetchCell(x, y, z)
+function module.FetchCell(self: Self, x: number, y: number, z: number)
     return self:FetchCellMarching(x, y, z)
 end
 
-local function Sample(occs, x, y, z)
+local function Sample(occs: TerrainVoxels<number>, x: number, y: number, z: number): number
     local avg = occs[x + 0][y + 0][z + 0]
-    avg += occs[x + 1][y + 0][z + 0]
-    avg += occs[x + 0][y + 0][z + 1]
-    avg += occs[x + 1][y + 0][z + 1]
-    avg += occs[x + 0][y + 1][z + 0]
-    avg += occs[x + 1][y + 1][z + 0]
-    avg += occs[x + 0][y + 1][z + 1]
-    avg += occs[x + 1][y + 1][z + 1]
+	          + occs[x + 1][y + 0][z + 0]
+	          + occs[x + 0][y + 0][z + 1]
+	          + occs[x + 1][y + 0][z + 1]
+	          + occs[x + 0][y + 1][z + 0]
+	          + occs[x + 1][y + 1][z + 0]
+	          + occs[x + 0][y + 1][z + 1]
+	          + occs[x + 1][y + 1][z + 1]
 
 	avg /= 8
-	
 	avg = math.floor(avg * terrainQuantization) / terrainQuantization
+	
     return avg
 end
 
 
-local function EmitSolidPoint(list, pos, val)
+local function EmitSolidPoint(list: {Vector3}, pos: Vector3, val: number)
     if val >= cutoff then
 		--table.insert(list, pos)
 		for _, c in pairs(module.boxCorners) do
@@ -66,14 +90,13 @@ local function EmitSolidPoint(list, pos, val)
     end
 end
 
-local function Frac(min, max, cross)
+local function Frac(min: number, max: number, cross: number)
     local range = max - min
-	local frac = (cross - min) / range
-	return frac
+	return (cross - min) / range
 	--return math.floor(frac*4)/4
 end
 
-local function SpanCheck(list, aval, bval, apos, bpos)
+local function SpanCheck(list: {Vector3}, aval: number, bval: number, apos: Vector3, bpos: Vector3)
     --if its a mismatch
     if aval < cutoff and bval >= cutoff then
 		local frac = Frac(aval, bval, cutoff)
@@ -101,37 +124,35 @@ local function SpanCheck(list, aval, bval, apos, bpos)
     end
 end
 
-
-
-function module:Lookup(a,b,c,d,e,f,g,h)
-		
+function module.Lookup(self: Self, a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number): {PlaneRecord}?
 	local key0 = Vector3.new(a,b,c)
 	local key1 = Vector3.new(d,e,f)
 	local key2 = Vector3.new(g,h,0)
 
  	local lookup0 = self.hullCache[key0]
+
 	if (lookup0 == nil) then
 		return nil
 	end 
 	
 	local lookup1 = lookup0[key1]
+	
 	if (lookup1 == nil) then
 		return nil
 	end
 	
 	return lookup1[key2]
-
 end
 
-function module:Write(a,b,c,d,e,f,g,h, tris)
-	
-	local key0 = Vector3.new(a,b,c)
-	local key1 = Vector3.new(d,e,f)
-	local key2 = Vector3.new(g,h,0)
+function module.Write(self: Self, a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, tris: {PlaneRecord}?)
+	local key0 = Vector3.new(a, b, c)
+	local key1 = Vector3.new(d, e, f)
+	local key2 = Vector3.new(g, h, 0)
 	
 	if (self.hullCache[key0] == nil) then
 		self.hullCache[key0] = {}
 	end
+
 	if (self.hullCache[key0][key1] == nil) then
 		self.hullCache[key0][key1] = {}
 	end
@@ -139,11 +160,10 @@ function module:Write(a,b,c,d,e,f,g,h, tris)
 	self.hullCache[key0][key1][key2] = tris
 end
 
-
-function module:FetchCellMarching(x, y, z)
-	
+function module.FetchCellMarching(self: Self, x, y, z)
 	local key = Vector3.new(x,y,z)
     local rawCell = self:RawFetchCell(key)
+	
     if rawCell then
         return rawCell
     end
@@ -161,7 +181,7 @@ function module:FetchCellMarching(x, y, z)
         corner + Vector3.new(self.gridSize + 4, self.gridSize + 4, self.gridSize + 4)
     )
 
-    local _materials, occs = game.Workspace.Terrain:ReadVoxels(region, 4)
+    local _, occs: TerrainVoxels<number> = workspace.Terrain:ReadVoxels(region, 4)
 	
 	local topAPos = Vector3.new(0, 4, 0)
 	local topBPos = Vector3.new(4, 4, 0)
@@ -173,7 +193,6 @@ function module:FetchCellMarching(x, y, z)
 	local botDPos = Vector3.new(4, 0, 4)
 	
 	local new = 0
-	local old = 0
 	
     for xx = 0, max do
         for yy = 0, max do
@@ -189,7 +208,7 @@ function module:FetchCellMarching(x, y, z)
 
 					instance.Shape = Enum.PartType.Block
 					instance.Color = Color3.new(1, 0.3, 0.3)
-					instance.Parent = game.Workspace
+					instance.Parent = workspace
 					instance.Anchored = true
 					instance.TopSurface = Enum.SurfaceType.Smooth
 					instance.BottomSurface = Enum.SurfaceType.Smooth
@@ -270,7 +289,7 @@ function module:FetchCellMarching(x, y, z)
 
 	                if #list > 3 then
 						tris = MinkowskiSumInstance:GetPlanePointForPoints(list)
-						self:Write(topA,topB, topC, topD, botA, botB, botC, botD, tris)				
+						self:Write(topA, topB, topC, topD, botA, botB, botC, botD, tris)				
 						new+=1
 					end
 				end
@@ -283,17 +302,20 @@ function module:FetchCellMarching(x, y, z)
 
 					if showHulls and RunService:IsClient() then
 						local points = {}
-						for key,tri in pairs(tris) do
+
+						for key, tri in pairs(tris) do
 							table.insert(points, tri[1]+center)
 							table.insert(points, tri[2]+center)
 							table.insert(points, tri[3]+center)
 						end
+
 						MinkowskiSumInstance:VisualizePlanesForPoints(points)
 					end
 				end
             end
         end
     end
+
 	if (new > 0) then 
 		--print("new ", new)
 	end
@@ -303,8 +325,7 @@ function module:FetchCellMarching(x, y, z)
     return cell
 end
 
-function module:BuildHullFromPlanePoint(tris, offset)
-
+function module.BuildHullFromPlanePoint(self: Self, tris: {PlaneRecord}, offset: Vector3): {HullRecord}
 	local records = {}
 
 	--Generate unique planes in n+d format
@@ -317,13 +338,14 @@ function module:BuildHullFromPlanePoint(tris, offset)
 			ed = ed,  
 			planeNum = self.planeNum,
 		})
-		self.planeNum+=1
+
+		self.planeNum += 1
 	end
 
 	return records
 end
 
-function module:SpawnDebugGridBox(x, y, z, color, grid)
+function module.SpawnDebugGridBox(self: Self, x: number, y: number, z: number, color: Color3, grid: number)
     local instance = Instance.new("Part")
 
     instance.Size = Vector3.new(grid, grid, grid)
@@ -331,53 +353,59 @@ function module:SpawnDebugGridBox(x, y, z, color, grid)
     instance.Transparency = 0
 
     instance.Color = color
-    instance.Parent = game.Workspace
+    instance.Parent = workspace
     instance.Anchored = true
     instance.TopSurface = Enum.SurfaceType.Smooth
     instance.BottomSurface = Enum.SurfaceType.Smooth
 end
 
-function module:CreateAndFetchCell(key)
-	
+function module.CreateAndFetchCell(self: Self, key: Vector3)
 	local cell = self.grid[key]
+
 	if (cell == nil) then
-		cell = {}
+		cell = {
+			instance = workspace.Terrain
+		}
+		
 		self.grid[key] = cell
 	end
-    return cell
+    
+	return cell
 end
 
-function module:Setup(gridSize, expansionSize)
+function module.Setup(self: Self, gridSize: number, expansionSize: Vector3)
     self.grid = {}
     self.expansionSize = expansionSize
 
     self.gridSize = gridSize
     self.boxSize = 4
-    self.div = self.gridSize / self.boxSize
 
-    self.expandedCorners = {}
+    self.div = self.gridSize / self.boxSize
+    self.expandedCorners = table.create(#corners)
+
     for _, corner in pairs(corners) do
         table.insert(self.expandedCorners, (corner * self.boxSize) + (corner * self.expansionSize))
     end
-    self.boxCorners = {}
-    for _, corner in pairs(corners) do
+    
+	self.boxCorners = table.create(#corners)
+    
+	for _, corner in pairs(corners) do
         table.insert(self.boxCorners, (corner * self.expansionSize))
     end
 
     local testPart = Instance.new("Part")
-    testPart.Size = Vector3.new(self.boxSize, self.boxSize, self.boxSize)
+    testPart.Size = Vector3.one * self.boxSize
     testPart.CanCollide = false
     self.testPart = testPart
 
-    if (game:GetService("RunService"):IsServer() == true) then
+    if RunService:IsServer() then
 --        self:PreprocessTerrain()
     end
 end
 
-function module:PreprocessTerrain()
-
+function module.PreprocessTerrain(self: Self)
     local rayParams = RaycastParams.new()
-    rayParams.FilterDescendantsInstances = { game.Workspace.Terrain}
+    rayParams.FilterDescendantsInstances = { workspace.Terrain }
     rayParams.FilterType = Enum.RaycastFilterType.Include
 
     local counter = 0
@@ -386,7 +414,7 @@ function module:PreprocessTerrain()
         local height = -200
         for x=-2048,2048, self.gridSize do
             for z=-2048, 2048, self.gridSize do
-                local hit = game.Workspace:Raycast(Vector3.new(x + self.gridSize*0.5,height,z+ self.gridSize*0.5), Vector3.new(0,-1000,0))
+                local hit = workspace:Raycast(Vector3.new(x + self.gridSize*0.5,height,z+ self.gridSize*0.5), Vector3.new(0,-1000,0))
                 if (hit) then
                     local xx = math.floor(x / self.gridSize)
                     local yy = math.floor(hit.Position.Y / self.gridSize)
