@@ -1,3 +1,4 @@
+--!strict
 local Triangle = {}
 
 local ref = Instance.new("WedgePart")
@@ -15,28 +16,28 @@ ref.Size = Vector3.new(0.25, 0.25, 0.25)
 ref.BottomSurface = Enum.SurfaceType.Smooth
 ref.TopSurface = Enum.SurfaceType.Smooth
 
-local function fromAxes(p, x, y, z)
-    return CFrame.new(p.x, p.y, p.z, x.x, y.x, z.x, x.y, y.y, z.y, x.z, y.z, z.z)
+local function fromAxes(p: Vector3, x: Vector3, y: Vector3, z: Vector3)
+    return CFrame.new(p.X, p.Y, p.Z, x.X, y.X, z.X, x.Y, y.Y, z.Y, x.Z, y.Z, z.Z)
 end
 
-function Triangle:Triangle(a, b, c)
+function Triangle:Triangle(a: Vector3, b: Vector3, c: Vector3)
     local ab, ac, bc = b - a, c - a, c - b
-    local abl, acl, bcl = ab.magnitude, ac.magnitude, bc.magnitude
+    local abl, acl, bcl = ab.Magnitude, ac.Magnitude, bc.Magnitude
     if abl > bcl and abl > acl then
         c, a = a, c
     elseif acl > bcl and acl > abl then
         a, b = b, a
     end
     ab, ac, bc = b - a, c - a, c - b
-    local out = ac:Cross(ab).unit
+    local out = ac:Cross(ab).Unit
     local wb = ref:Clone()
     local wc = ref:Clone()
-    local biDir = bc:Cross(out).unit
+    local biDir = bc:Cross(out).Unit
     local biLen = math.abs(ab:Dot(biDir))
-    local norm = bc.magnitude
+    local norm = bc.Magnitude
     wb.Size = Vector3.new(0, math.abs(ab:Dot(bc)) / norm, biLen)
     wc.Size = Vector3.new(0, biLen, math.abs(ac:Dot(bc)) / norm)
-    bc = -bc.unit
+    bc = -bc.Unit
     wb.CFrame = fromAxes((a + b) / 2, -out, bc, -biDir)
     wc.CFrame = fromAxes((a + c) / 2, -out, biDir, bc)
 
