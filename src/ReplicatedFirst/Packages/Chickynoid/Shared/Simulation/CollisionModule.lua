@@ -1,8 +1,7 @@
 --@!native
+--!strict
 
 local RunService = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
-
 local path = script.Parent.Parent
 
 local MinkowskiSumInstance = require(script.Parent.MinkowskiSumInstance)
@@ -10,8 +9,32 @@ local TerrainModule = require(script.Parent.TerrainCollision)
 local FastSignal = require(path.Vendor.FastSignal)
 
 local module = {}
-module.hullRecords = {}
-module.dynamicRecords = {}
+
+type CollisionModule = typeof(module)
+type HullRecord = MinkowskiSumInstance.HullRecord
+
+type PartRecord = {
+    instance: BasePart,
+    hull: {HullRecord}?,
+}
+
+type DynamicPartRecord = PartRecord & {
+    currentCFrame: CFrame,
+    Update: (self: DynamicPartRecord) -> (),
+}
+
+type HullData = {
+    startPos: Vector3,
+    endPos: Vector3,
+    fraction: number,
+    startSolid: boolean,
+    allSolid: boolean,
+    planeNum: number,
+    planeD: number,
+    normal: Vector3,
+    checks: number,
+    hullRecord: PartRecord?,
+}
 
 local SKIN_THICKNESS = 0.05 --closest you can get to a wall
 module.planeNum = 0
@@ -19,10 +42,30 @@ module.gridSize = 4
 module.fatGridSize = 16
 module.fatPartSize = 32
 module.profile = false
+module.dynamicRecords = {} :: {DynamicPartRecord}
 
-module.grid = {}
-module.fatGrid = {}
-module.cache = {}
+module.hullRecords = {} :: {
+    [BasePart]: PartRecord
+}
+
+module.grid = {} :: {
+    [Vector3]: {
+        [BasePart]: PartRecord
+    }
+}
+
+module.fatGrid = {} :: {
+    [Vector3]: {
+        [BasePart]: PartRecord
+    }
+}
+
+module.cache = {} :: {
+    [Vector3]: {
+        [Vector3]: {PartRecord}
+    }
+}
+
 module.cacheCount = 0
 module.maxCacheCount = 10000
 
@@ -30,6 +73,7 @@ module.loadProgress = 0
 module.OnLoadProgressChanged = FastSignal.new()
 
 module.expansionSize = Vector3.new(2, 5, 2)
+module.processing = false
 
 local debugParts = false
 
@@ -44,107 +88,82 @@ local corners = {
     Vector3.new(-0.5, -0.5, -0.5),
 }
 
-function module:FetchCell(x, y, z)
-	local key = Vector3.new(x,y,z)
+
+function module.FetchCell(self: CollisionModule, x: number, y: number, z: number)
+	local key = Vector3.new(x, y, z)
 	return self.grid[key]
 end
 
-function module:FetchFatCell(x, y, z)
-	local key = Vector3.new(x,y,z)
+function module.FetchFatCell(self: CollisionModule, x: number, y: number, z: number)
+	local key = Vector3.new(x, y, z)
 	return self.fatGrid[key]
 end
 
-function module:CreateAndFetchCell(x, y, z)
-	local key = Vector3.new(x,y,z)
+function module.CreateAndFetchCell(self: CollisionModule, x: number, y: number, z: number)
+	local key = Vector3.new(x, y, z)
 	local res = self.grid[key]
-	if (res == nil) then
+
+	if res == nil then
 		res = {}
 		self.grid[key] = res
 	end
+
 	return res
 end
 
-function module:CreateAndFetchFatCell(x, y, z)
-	local key = Vector3.new(x,y,z)
+function module.CreateAndFetchFatCell(self: CollisionModule, x: number, y: number, z: number)
+	local key = Vector3.new(x, y, z)
 	local res = self.fatGrid[key]
-	if (res == nil) then
+
+	if res == nil then
 		res = {}
 		self.fatGrid[key] = res
 	end
+
 	return res
 end
 
-function module:FindAABB(part)
+function module.FindAABB(part: BasePart)
     local orientation = part.CFrame
     local size = part.Size
 
     local minx = math.huge
     local miny = math.huge
     local minz = math.huge
+
     local maxx = -math.huge
     local maxy = -math.huge
     local maxz = -math.huge
 
     for _, corner in pairs(corners) do
         local vec = orientation * (size * corner)
-        if vec.x < minx then
-            minx = vec.x
+        if vec.X < minx then
+            minx = vec.X
         end
-        if vec.y < miny then
-            miny = vec.y
+        if vec.Y < miny then
+            miny = vec.Y
         end
-        if vec.z < minz then
-            minz = vec.z
+        if vec.Z < minz then
+            minz = vec.Z
         end
-        if vec.x > maxx then
-            maxx = vec.x
+        if vec.X > maxx then
+            maxx = vec.X
         end
-        if vec.y > maxy then
-            maxy = vec.y
+        if vec.Y > maxy then
+            maxy = vec.Y
         end
-        if vec.z > maxz then
-            maxz = vec.z
+        if vec.Z > maxz then
+            maxz = vec.Z
         end
     end
+
     return minx, miny, minz, maxx, maxy, maxz
 end
 
-function module:FindPointsAABB(points)
-    local minx = math.huge
-    local miny = math.huge
-    local minz = math.huge
-    local maxx = -math.huge
-    local maxy = -math.huge
-    local maxz = -math.huge
+function module.WritePartToHashMap(self: CollisionModule, instance: BasePart, hullRecord: PartRecord)
+    local minx, miny, minz, maxx, maxy, maxz = module.FindAABB(instance)
 
-    for _, vec in pairs(points) do
-        if vec.x < minx then
-            minx = vec.x
-        end
-        if vec.y < miny then
-            miny = vec.y
-        end
-        if vec.z < minz then
-            minz = vec.z
-        end
-        if vec.x > maxx then
-            maxx = vec.x
-        end
-        if vec.y > maxy then
-            maxy = vec.y
-        end
-        if vec.z > maxz then
-            maxz = vec.z
-        end
-    end
-    return minx, miny, minz, maxx, maxy, maxz
-end
-
- 
-function module:WritePartToHashMap(instance, hullRecord)
-    local minx, miny, minz, maxx, maxy, maxz = self:FindAABB(instance)
-
-	if (maxx-minx > self.fatPartSize or maxy-miny > self.fatPartSize or maxz-minz > self.fatPartSize) then
+	if maxx - minx > self.fatPartSize or maxy-miny > self.fatPartSize or maxz-minz > self.fatPartSize then
 						
         --Part is fat
         for x = (minx // self.fatGridSize), (maxx // self.fatGridSize)  do
@@ -158,7 +177,7 @@ function module:WritePartToHashMap(instance, hullRecord)
 		--print("Fat part", instance.Name)
 		
 		--[[
-		if (game["Run Service"]:IsClient() and instance:GetAttribute("showdebug")) then
+		if (RunService:IsClient() and instance:GetAttribute("showdebug")) then
 			for x = math.floor(minx / self.fatGridSize), math.ceil(maxx/self.fatGridSize)-1 do
 				for z = math.floor(minz / self.fatGridSize), math.ceil(maxz/self.fatGridSize)-1 do
 					for y = math.floor(miny / self.fatGridSize), math.ceil(maxy/self.fatGridSize)-1 do
@@ -179,31 +198,29 @@ function module:WritePartToHashMap(instance, hullRecord)
             end
         end
         --[[
-	if (game["Run Service"]:IsClient() and instance:GetAttribute("showdebug")) then
-		for x = math.floor(minx / self.gridSize), math.ceil(maxx/self.gridSize)-1 do
-			for z = math.floor(minz / self.gridSize), math.ceil(maxz/self.gridSize)-1 do
-				for y = math.floor(miny / self.gridSize), math.ceil(maxy/self.gridSize)-1 do
+        if (RunService:IsClient() and instance:GetAttribute("showdebug")) then
+            for x = math.floor(minx / self.gridSize), math.ceil(maxx/self.gridSize)-1 do
+                for z = math.floor(minz / self.gridSize), math.ceil(maxz/self.gridSize)-1 do
+                    for y = math.floor(miny / self.gridSize), math.ceil(maxy/self.gridSize)-1 do
 
-					self:SpawnDebugGridBox(x,y,z, Color3.new(math.random(),1,1))
-				end
-			end
-		end
-	end]]
-    --
+                        self:SpawnDebugGridBox(x,y,z, Color3.new(math.random(),1,1))
+                    end
+                end
+            end
+        end]]
     end
 end
 
  
 
-function module:RemovePartFromHashMap(instance)
+function module.RemovePartFromHashMap(self: CollisionModule, instance: BasePart)
     if instance:GetAttribute("ChickynoidIgnoreRemoval") then
         return
     end
 
-    local minx, miny, minz, maxx, maxy, maxz = self:FindAABB(instance)
+    local minx, miny, minz, maxx, maxy, maxz = module.FindAABB(instance)
 
-	if (maxx-minx > self.fatPartSize or maxy-miny > self.fatPartSize or maxz-minz > self.fatPartSize) then
-        
+	if maxx-minx > self.fatPartSize or maxy-miny > self.fatPartSize or maxz-minz > self.fatPartSize then
         for x = (minx // self.fatGridSize), (maxx // self.fatGridSize)  do
             for z = (minz // self.fatGridSize), (maxz // self.fatGridSize) do
                 for y = (miny // self.fatGridSize), (maxy // self.fatGridSize) do
@@ -214,7 +231,6 @@ function module:RemovePartFromHashMap(instance)
                 end
             end
         end
-
     else
         for x = (minx // self.gridSize), (maxx // self.gridSize)  do
             for z = (minz // self.gridSize), (maxz // self.gridSize)  do
@@ -229,41 +245,46 @@ function module:RemovePartFromHashMap(instance)
     end
 end
 
-function module:FetchHullsForPoint(point)
+function module.FetchHullsForPoint(self: CollisionModule, point: Vector3)
     local cell = self:FetchCell(
-       point.x // self.gridSize,
-       point.y // self.gridSize,
-       point.z // self.gridSize
+        point.X // self.gridSize,
+        point.Y // self.gridSize,
+        point.Z // self.gridSize
     )
+
     local hullRecords = {}
+
     if cell then
-        for _, hull in cell do
-            hullRecords[hull] = hull
+        for part, hull in cell do
+            hullRecords[part] = hull
         end
     end
 
-    local cell = self:FetchFatCell(
-        point.x // self.fatGridSize,
-        point.y // self.fatGridSize,
-        point.z // self.fatGridSize
+    cell = self:FetchFatCell(
+        point.X // self.fatGridSize,
+        point.Y // self.fatGridSize,
+        point.Z // self.fatGridSize
     )
-    local hullRecords = {}
+
+    hullRecords = {}
+
     if cell then
-        for _, hull in cell do
-            hullRecords[hull] = hull
+        for part, hull in cell do
+            hullRecords[part] = hull
         end
     end
 
     return hullRecords
 end
 
-function module:FetchHullsForBox(min, max)
-    local minx = min.x
-    local miny = min.y
-    local minz = min.z
-    local maxx = max.x
-    local maxy = max.y
-    local maxz = max.z
+function module.FetchHullsForBox(self: CollisionModule, min: Vector3, max: Vector3): {PartRecord}
+    local minx = min.X
+    local miny = min.Y
+    local minz = min.Z
+
+    local maxx = max.X
+    local maxy = max.Y
+    local maxz = max.Z
 
     if minx > maxx then
         local t = minx
@@ -281,20 +302,20 @@ function module:FetchHullsForBox(min, max)
         maxz = t
 	end
 	
-	local key = Vector3.new(minx, minz, miny) // self.gridSize
-	local otherKey = Vector3.new(maxx, maxy, maxz) // self.gridSize
+	local key: Vector3 = Vector3.new(minx, minz, miny) // self.gridSize
+	local otherKey: Vector3 = Vector3.new(maxx, maxy, maxz) // self.gridSize
 
-		
 	local cached = self.cache[key]
-	if (cached) then
+	if cached then
 		local rec = cached[otherKey]
-		if (rec) then
+		if rec then
 			return rec
 		end
 	end
 			
 
-    local hullRecords = {}
+    local hullMap = {}
+    local hullCount = 0
 
     --Expanded by 1, so objects right on borders will be in the appropriate query
     for x = (minx // self.gridSize) - 1, (maxx // self.gridSize)+1 do
@@ -302,15 +323,17 @@ function module:FetchHullsForBox(min, max)
             for y = (miny // self.gridSize) - 1, (maxy // self.gridSize)+1 do
                 local cell = self:FetchCell(x, y, z)
                 if cell then
-                    for _, hull in cell do
-                        hullRecords[hull] = hull
+                    for part, hull in cell do
+                        hullMap[hull] = true
+                        hullCount += 1
                     end
                 end
 
                 local terrainHull = TerrainModule:FetchCell(x, y, z)
                 if terrainHull then
-                    for _, hull in pairs(terrainHull) do
-                        hullRecords[hull] = hull
+                    for i, hull in pairs(terrainHull) do
+                        hullMap[hull] = true
+                        hullCount += 1
                     end
                 end
             end
@@ -323,51 +346,55 @@ function module:FetchHullsForBox(min, max)
             for y =  (miny // self.fatGridSize) - 1, (maxy // self.fatGridSize)+1 do
                 local cell = self:FetchFatCell(x, y, z)
                 if cell then
-                    for _, hull in cell do
-                        hullRecords[hull] = hull
+                    for part, hull in cell do
+                        hullMap[hull] = true
+                        hullCount += 1
                     end
                 end
             end
         end
     end
 	
-	
-	self.cacheCount+=1
-	if (self.cacheCount > self.maxCacheCount) then
+	self.cacheCount += 1
+
+	if self.cacheCount > self.maxCacheCount then
 		self.cacheCount = 0
 		self.cache = {}
 	end
 	
 	--Store it
-	local cached = self.cache[key]
-	if (cached == nil) then
+    local hullRecords = table.create(hullCount)
+	cached = self.cache[key]
+
+	if cached == nil then
 		cached = {}
 		self.cache[key] = cached
 	end
-	cached[otherKey] = hullRecords
-	
-	
+    
 	--Inflate missing hulls
-	for key,record in pairs(hullRecords) do
-       
-    	if (record.hull == nil) then
-			record.hull = self:GenerateConvexHullAccurate(record.instance, module.expansionSize, self:GenerateSnappedCFrame(record.instance))
+    for record in hullMap do
+    	if record.hull == nil then
+            local hull = self:GenerateConvexHullAccurate(record.instance, module.expansionSize, self:GenerateSnappedCFrame(record.instance))
 			
-		 
-            if (record.hull == nil) then
-                hullRecords[key] = nil
+            if hull then
+                record.hull = hull
+			else
+                continue
             end
 		end
+
+        table.insert(hullRecords, record)
 	end
-	
-		
+
+	cached[otherKey] = hullRecords
 	return hullRecords
 end
 
-function module:GenerateConvexHullAccurate(part, expansionSize, cframe)
+function module.GenerateConvexHullAccurate(self: CollisionModule, part: BasePart, expansionSize: Vector3, cframe: CFrame): {HullRecord}?
     local debugRoot = nil
+
     if debugParts == true and RunService:IsClient() then
-        debugRoot = game.Workspace.Terrain
+        debugRoot = workspace.Terrain
     end
 
     local hull, counter = MinkowskiSumInstance:GetPlanesForInstance(
@@ -377,29 +404,29 @@ function module:GenerateConvexHullAccurate(part, expansionSize, cframe)
         self.planeNum,
         debugRoot
     )
+
     self.planeNum = counter
     return hull
 end
 
 
 --1/100th of a degree  0.01 etc
-local function RoundOrientation(num)
+local function RoundOrientation(num: number): number
 	return math.floor(num * 100 + 0.5) / 100
 end
  
-function module:GenerateSnappedCFrame(instance)
-	
+function module.GenerateSnappedCFrame(self: CollisionModule, instance: BasePart): CFrame
 	--Because roblox cannot guarentee perfect replication of part orientation, we'll take what is replicated and rount it after a certain level of precision
 	--techically positions might have the same problem, but orientations were mispredicting on sloped surfaces
+
 	local x = RoundOrientation(instance.Orientation.X)
 	local y = RoundOrientation(instance.Orientation.Y)
 	local z = RoundOrientation(instance.Orientation.Z)
 	
-	local newCF = CFrame.new(instance.CFrame.Position) * CFrame.fromOrientation(math.rad(x), math.rad(y), math.rad(z))
-	return newCF
+	return CFrame.new(instance.CFrame.Position) * CFrame.fromOrientation(math.rad(x), math.rad(y), math.rad(z))
 end
 
-function module:ProcessCollisionOnInstance(instance, playerSize)
+function module.ProcessCollisionOnInstance(self: CollisionModule, instance: Instance, playerSize: Vector3)
     if instance:IsA("BasePart") then
         if instance.CanCollide == false then
             return
@@ -409,8 +436,8 @@ function module:ProcessCollisionOnInstance(instance, playerSize)
             return
         end
 		
-		--[[
-        if CollectionService:HasTag(instance, "Dynamic") then
+        --[[
+        if instance:HasTag("Dynamic") then
             local record = {}
             record.instance = instance
             record.hull = self:GenerateConvexHullAccurate(instance, playerSize, instance.CFrame)
@@ -420,7 +447,7 @@ function module:ProcessCollisionOnInstance(instance, playerSize)
             -- selene: allow(shadowing)
             function record:Update()
                 if
-                    ((record.currentCFrame.Position - instance.CFrame.Position).magnitude < 0.00001)
+                    ((record.currentCFrame.Position - instance.CFrame.Position).Magnitude < 0.00001)
                     and (record.currentCFrame.LookVector:Dot(instance.CFrame.LookVector) > 0.999)
                 then
                     return
@@ -433,7 +460,8 @@ function module:ProcessCollisionOnInstance(instance, playerSize)
             table.insert(module.dynamicRecords, record)
 
             return
-        end]]--
+        end
+        ]]--
 
         local record = {}
         record.instance = instance
@@ -444,7 +472,7 @@ function module:ProcessCollisionOnInstance(instance, playerSize)
     end
 end
 
-function module:SpawnDebugGridBox(x, y, z, color)
+function module.SpawnDebugGridBox(self: CollisionModule, x: number, y: number, z: number, color: Color3)
     local instance = Instance.new("Part")
     instance.Size = Vector3.new(self.gridSize, self.gridSize, self.gridSize)
     instance.Position = (Vector3.new(x, y, z) * self.gridSize)
@@ -458,7 +486,7 @@ function module:SpawnDebugGridBox(x, y, z, color)
 end
 
 
-function module:SpawnDebugFatGridBox(x, y, z, color)
+function module.SpawnDebugFatGridBox(self: CollisionModule, x: number, y: number, z: number, color: Color3)
 	local instance = Instance.new("Part")
 	instance.Size = Vector3.new(self.fatGridSize, self.fatGridSize, self.fatGridSize)
 	instance.Position = (Vector3.new(x, y, z) * self.fatGridSize)
@@ -471,10 +499,7 @@ function module:SpawnDebugFatGridBox(x, y, z, color)
 	instance.BottomSurface = Enum.SurfaceType.Smooth
 end
 
-
-
-function module:SimpleRayTest(a, b, hull)
-    
+function module.SimpleRayTest(self: CollisionModule, a: Vector3, b: Vector3, hull: {Plane}): (number?, number?)
     local d = b - a
     
     local tfirst = -1
@@ -486,7 +511,7 @@ function module:SimpleRayTest(a, b, hull)
 
         if denom == 0 then
             if dist > 0 then
-                return nil
+                return nil, nil
             end
         else
             local t = dist / denom
@@ -501,18 +526,24 @@ function module:SimpleRayTest(a, b, hull)
             end
             
             if tfirst > tlast then
-                return nil
+                return nil, nil
             end
         end
     end
+
     return tfirst, tlast
 end
 
 
-function module:CheckBrushPoint(data, hullRecord)
+function module.CheckBrushPoint(self: CollisionModule, data: HullData, hullRecord: PartRecord)
     local startsOut = false
+    local hullPtr = hullRecord.hull
 
-    for _, p in pairs(hullRecord.hull) do
+    if hullPtr == nil then
+        return
+    end
+
+    for _, p in pairs(hullPtr) do
         local startDistance = data.startPos:Dot(p.n) - p.ed
 
         if startDistance > 0 then
@@ -531,14 +562,19 @@ function module:CheckBrushPoint(data, hullRecord)
 end
 
 --Checks a brush, but doesn't handle it well if the start point is inside a brush
-function module:CheckBrush(data, hullRecord)
+function module.CheckBrush(self: CollisionModule, data: HullData, hullRecord: PartRecord)
     local startFraction = -1.0
     local endFraction = 1.0
     local startsOut = false
     local endsOut = false
     local lastPlane = nil
+    local hull = hullRecord.hull
 
-    for _, p in pairs(hullRecord.hull) do
+    if not hull then
+        return
+    end
+
+    for _, p in pairs(hull) do
         local startDistance = data.startPos:Dot(p.n) - p.ed
         local endDistance = data.endPos:Dot(p.n) - p.ed
 
@@ -605,7 +641,9 @@ function module:CheckBrush(data, hullRecord)
 end
 
 --Checks a brush, but is smart enough to ignore the brush entirely if the start point is inside but the ray is "exiting" or "exited"
-function module:CheckBrushNoStuck(data, hullRecord)
+
+
+function module.CheckBrushNoStuck(self: CollisionModule, data: HullData, hullRecord: PartRecord)
     local startFraction = -1.0
     local endFraction = 1.0
     local startsOut = false
@@ -614,8 +652,13 @@ function module:CheckBrushNoStuck(data, hullRecord)
 
     local nearestStart = -math.huge
     local nearestEnd = -math.huge
+    local hull = hullRecord.hull
+
+    if not hull then
+        return
+    end
 	
-    for _, p in pairs(hullRecord.hull) do
+    for _, p in pairs(hull) do
         local startDistance = data.startPos:Dot(p.n) - p.ed
         local endDistance = data.endPos:Dot(p.n) - p.ed
 
@@ -697,19 +740,19 @@ function module:CheckBrushNoStuck(data, hullRecord)
     end
 end
 
-function module:PlaneLineIntersect(normal, distance, V1, V2)
-    local diff = V2 - V1
-    local denominator = normal:Dot(diff)
+function module.PlaneLineIntersect(self: CollisionModule, normal: Vector3, distance: number, V1: Vector3, V2: Vector3): Vector3?
+    local denominator = normal:Dot(V2 - V1)
+
     if denominator == 0 then
         return nil
     end
-    local u = (normal.x * V1.x + normal.y * V1.y + normal.z * V1.z + distance) / -denominator
 
+    local u = (normal:Dot(V1) + distance) / -denominator
     return (V1 + u * (V2 - V1))
 end
 
 
-function module:Sweep(startPos, endPos)
+function module.Sweep(self: CollisionModule, startPos: Vector3, endPos: Vector3): HullData
     local data = {}
     data.startPos = startPos
     data.endPos = endPos
@@ -718,28 +761,33 @@ function module:Sweep(startPos, endPos)
     data.allSolid = false
     data.planeNum = 0
     data.planeD = 0
-    data.normal = Vector3.new(0, 1, 0)
+    data.normal = Vector3.yAxis
     data.checks = 0
     data.hullRecord = nil
 
-    if (startPos - endPos).magnitude > 1000 then
+    if (startPos - endPos).Magnitude > 1000 then
         return data
     end
-    if (self.profile == true) then
+
+    if self.profile then
         debug.profilebegin("Sweep")
     end
+
 	--calc bounds of sweep
-	if (self.profile == true) then
+	if self.profile then
 		debug.profilebegin("Fetch")
 	end
+
     local hullRecords = self:FetchHullsForBox(startPos, endPos)
-	if (self.profile==true) then
+
+	if self.profile then
 		debug.profileend()
 	end
 	
-	if (self.profile == true) then
+	if self.profile then
 		debug.profilebegin("Collide")
 	end
+    
     for _, hullRecord in pairs(hullRecords) do
 		data.checks += 1
 		
@@ -754,7 +802,8 @@ function module:Sweep(startPos, endPos)
 			end
 		end
 	end
-	if (self.profile == true) then
+
+	if self.profile then
 		debug.profileend()
 	end
 
@@ -764,7 +813,7 @@ function module:Sweep(startPos, endPos)
             data.checks += 1
 
             self:CheckBrushNoStuck(data, hullRecord)
-            if (data.allSolid == true) then
+            if data.allSolid then
                 data.fraction = 0
                 break
             end
@@ -779,13 +828,14 @@ function module:Sweep(startPos, endPos)
         data.endPos = startPos + (vec * data.fraction)
     end
 
-    if (self.profile == true) then
+    if self.profile then
         debug.profileend()
     end
+
     return data
 end
 
-function module:BoxTest(pos)
+function module.BoxTest(self: CollisionModule, pos: Vector3): HullData
     local data = {}
     data.startPos = pos
     data.endPos = pos
@@ -794,7 +844,7 @@ function module:BoxTest(pos)
     data.allSolid = false
     data.planeNum = 0
     data.planeD = 0
-    data.normal = Vector3.new(0, 1, 0)
+    data.normal = Vector3.yAxis
     data.checks = 0
     data.hullRecord = nil
 
@@ -816,7 +866,7 @@ function module:BoxTest(pos)
 end
 
 --Call this before you try and simulate
-function module:UpdateDynamicParts()
+function module.UpdateDynamicParts(self: CollisionModule)
     for _, record in pairs(self.dynamicRecords) do
         if record.Update then
             record:Update()
@@ -824,7 +874,7 @@ function module:UpdateDynamicParts()
     end
 end
 
-function module:MakeWorld(folder, playerSize)
+function module.MakeWorld(self: CollisionModule, folder: Folder, playerSize: Vector3)
 	
 	debug.setmemorycategory("ChickynoidCollision")
 	
@@ -877,7 +927,7 @@ function module:MakeWorld(folder, playerSize)
 		print("Collision processing: 100%")
 		self.processing = false
 		
-		if (game["Run Service"]:IsServer()) then
+		if (RunService:IsServer()) then
 			print("Server Time Taken: ", math.floor(tick() - startTime), "seconds")
 			
 		else
@@ -897,16 +947,14 @@ function module:MakeWorld(folder, playerSize)
     end)
     
     folder.DescendantRemoving:Connect(function(instance)
-        local record = module.hullRecords[instance]
-
-		if record then
-			self:ClearCache()
+        if instance:IsA("BasePart") and module.hullRecords[instance] then
+            self:ClearCache()
             self:RemovePartFromHashMap(instance)
         end
     end)
 end
 
-function module:ClearCache()
+function module.ClearCache(self: CollisionModule)
 	self.cache = {}
 	self.cacheCount = 0	
 end
