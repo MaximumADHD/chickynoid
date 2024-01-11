@@ -1,12 +1,41 @@
 --!native
+--!strict
+
 local CharacterData = {}
 CharacterData.__index = CharacterData
-local Animations = require(game.ReplicatedFirst.Packages.Chickynoid.Shared.Simulation.Animations)
+
+export type Class = typeof(setmetatable({} :: {
+	serialized: {
+		pos: Vector3,
+		angle: number,
+		stepUp: number,
+		flatSpeed: number,
+		exclusiveAnimTime: number,
+
+		animCounter0: number,
+		animNum0: number,
+
+		animCounter1: number,
+		animNum1: number,
+
+		animCounter2: number,
+		animNum2: number,
+
+		animCounter3: number,
+		animNum3: number,
+	},
+
+	isResimulating: boolean,
+	targetPosition: Vector3,
+}, CharacterData))
+
+type Self = typeof(CharacterData)
 
 local EPSILION = 0.00001
+local Animations = require(script.Parent.Animations)
 local mathUtils = require(script.Parent.MathUtils)
 
-local function Lerp(a, b, frac)
+local function Lerp(a: any, b: any, frac: number)
     return a:Lerp(b, frac)
 end
 
@@ -14,97 +43,107 @@ local function AngleLerp(a, b, frac)
     return mathUtils:LerpAngle(a, b, frac)
 end
 
-local function NumberLerp(a, b, frac)
+local function NumberLerp(a: number, b: number, frac: number)
     return (a * (1 - frac)) + (b * frac)
 end
 
-local function Raw(_a, b, _frac)
+local function Raw(_a: number, b: number, _frac: number)
     return b
 end
 
 local MAX_FLOAT16 = math.pow(2, 16)
-local function ValidateFloat16(float)
+local function ValidateFloat16(float: number)
     return math.clamp(float, -MAX_FLOAT16, MAX_FLOAT16)
 end
 
 local MAX_BYTE = 255
-local function ValidateByte(byte)
+local function ValidateByte(byte: number)
     return math.clamp(byte, 0, MAX_BYTE)
 end
 
-local function ValidateVector3(input)
+local function ValidateVector3(input: Vector3)
     return input
 end
 
-local function ValidateNumber(input)
+local function ValidateNumber(input: number)
     return input
 end
 
-local function CompareVector3(a, b)
-    if math.abs(a.x - b.x) > EPSILION or math.abs(a.y - b.y) > EPSILION or math.abs(a.z - b.z) > EPSILION then
+local function CompareVector3(a: Vector3, b: Vector3)
+    if math.abs(a.X - b.X) > EPSILION or math.abs(a.Y - b.Y) > EPSILION or math.abs(a.Z - b.Z) > EPSILION then
         return false
     end
+
     return true
 end
 
-local function CompareByte(a, b)
+local function CompareByte(a: number, b: number)
     return a == b
 end
 
-local function CompareFloat16(a, b)
+local function CompareFloat16(a: number, b: number)
     return a == b
 end
 
-local function CompareNumber(a, b)
+local function CompareNumber(a: number, b: number)
     return a == b
 end
 
-local function WriteVector3(buf : buffer, offset : number, value : Vector3 ) : number
+local function WriteVector3(buf: buffer, offset: number, value: Vector3 ): number
 	buffer.writef32(buf, offset, value.X)
-	offset+=4
+	offset += 4
+
 	buffer.writef32(buf, offset, value.Y)
-	offset+=4
+	offset += 4
+
 	buffer.writef32(buf, offset, value.Z)
-	offset+=4
+	offset += 4
+
 	return offset
 end
 
-local function ReadVector3(buf : buffer, offset : number) 
+local function ReadVector3(buf: buffer, offset: number) 
 	local x = buffer.readf32(buf, offset)
-	offset+=4
+	offset += 4
+
 	local y = buffer.readf32(buf, offset)
-	offset+=4
+	offset += 4
+
 	local z = buffer.readf32(buf, offset)
-	offset+=4
-	return Vector3.new(x,y,z), offset
+	offset += 4
+
+	return Vector3.new(x, y, z), offset
 end
 
-local function WriteFloat32(buf : buffer, offset : number, value : number ) : number
+local function WriteFloat32(buf: buffer, offset: number, value: number ) : number
 	buffer.writef32(buf, offset, value)
-	offset+=4
-	return offset
+	offset += 4
+
+	return offset + 4
 end
 
-local function ReadFloat32(buf : buffer, offset : number) 
+local function ReadFloat32(buf: buffer, offset: number) 
 	local x = buffer.readf32(buf, offset)
-	offset+=4
+	offset += 4
+
 	return x, offset
 end
 
-local function WriteByte(buf : buffer, offset : number, value : number ) : number
+local function WriteByte(buf: buffer, offset: number, value: number ): number
 	buffer.writeu8(buf, offset, value)
-	offset+=1
+	offset += 1
+
 	return offset
 end
 
-local function ReadByte(buf : buffer, offset : number) 
+local function ReadByte(buf: buffer, offset: number) 
 	local x = buffer.readu8(buf, offset)
-	offset+=1
+	offset += 1
+
 	return x, offset
 end
 
-local function WriteFloat16(buf : buffer, offset : number, value : number ) : number
-	
+local function WriteFloat16(buf: buffer, offset: number, value: number): number
 	local sign = value < 0
 	value = math.abs(value)
 
@@ -112,32 +151,39 @@ local function WriteFloat16(buf : buffer, offset : number, value : number ) : nu
 
 	if value == math.huge then
 		if sign then
-			buffer.writeu8(buf,offset,252)-- 11111100
-			offset+=1
+			buffer.writeu8(buf, offset, 252)-- 11111100
+			offset += 1
 		else
-			buffer.writeu8(buf,offset,124) -- 01111100
-			offset+=1
+			buffer.writeu8(buf, offset, 124) -- 01111100
+			offset += 1
 		end
-		buffer.writeu8(buf,offset,0) -- 00000000
-		offset+=1
+
+		buffer.writeu8(buf, offset, 0) -- 00000000
+		offset += 1
+
 		return offset
 	elseif value ~= value or value == 0 then
-		buffer.writeu8(buf,offset,0)
-		offset+=1
-		buffer.writeu8(buf,offset,0)
-		offset+=1
+		buffer.writeu8(buf, offset, 0)
+		offset += 1
+
+		buffer.writeu8(buf, offset, 0)
+		offset += 1
+
 		return offset
 	elseif exponent + 15 <= 1 then -- Bias for halfs is 15
 		mantissa = math.floor(mantissa * 1024 + 0.5)
+
 		if sign then
 			buffer.writeu8(buf,offset,(128 + bit32.rshift(mantissa, 8))) -- Sign bit, 5 empty bits, 2 from mantissa
-			offset+=1
+			offset += 1
 		else
 			buffer.writeu8(buf,offset,(bit32.rshift(mantissa, 8)))
-			offset+=1
+			offset += 1
 		end
-		buffer.writeu8(buf,offset,bit32.band(mantissa, 255)) -- Get last 8 bits from mantissa
-		offset+=1
+
+		buffer.writeu8(buf, offset, bit32.band(mantissa, 255)) -- Get last 8 bits from mantissa
+		offset += 1
+
 		return offset
 	end
 
@@ -145,24 +191,25 @@ local function WriteFloat16(buf : buffer, offset : number, value : number ) : nu
 
 	-- The bias for halfs is 15, 15-1 is 14
 	if sign then
-		buffer.writeu8(buf,offset,(128 + bit32.lshift(exponent + 14, 2) + bit32.rshift(mantissa, 8)))
-		offset+=1
+		buffer.writeu8(buf, offset, (128 + bit32.lshift(exponent + 14, 2) + bit32.rshift(mantissa, 8)))
+		offset += 1
 	else
-		buffer.writeu8(buf,offset,(bit32.lshift(exponent + 14, 2) + bit32.rshift(mantissa, 8)))
-		offset+=1
+		buffer.writeu8(buf, offset, (bit32.lshift(exponent + 14, 2) + bit32.rshift(mantissa, 8)))
+		offset += 1
 	end
-	buffer.writeu8(buf,offset,bit32.band(mantissa, 255))
-	offset+=1
+
+	buffer.writeu8(buf, offset, bit32.band(mantissa, 255))
+	offset += 1
 	
 	return offset
 end
 
-local function ReadFloat16(buf : buffer, offset : number) 
-
+local function ReadFloat16(buf: buffer, offset: number) 
 	local b0 = buffer.readu8(buf, offset)
-	offset+=1
+	offset += 1
+
 	local b1 = buffer.readu8(buf, offset)
-	offset+=1
+	offset += 1
 	
 	local sign = bit32.btest(b0, 128)
 	local exponent = bit32.rshift(bit32.band(b0, 127), 2)
@@ -183,43 +230,45 @@ local function ReadFloat16(buf : buffer, offset : number)
 	end
 
 	mantissa = (mantissa / 1024) + 1
-
 	return (sign and -math.ldexp(mantissa, exponent - 15) or math.ldexp(mantissa, exponent - 15)), offset
 end
 
-function CharacterData:SetIsResimulating(bool)
+function CharacterData.SetIsResimulating(self: Class, bool: boolean)
     self.isResimulating = bool
 end
 
-function CharacterData:ModuleSetup()
-    CharacterData.methods = {}
-    CharacterData.methods["Vector3"] = {
+function CharacterData.ModuleSetup(self: Self)
+    self.methods = {}
+
+    self.methods["Vector3"] = {
         write = WriteVector3,
         read = ReadVector3,
         validate = ValidateVector3,
         compare = CompareVector3,
     }
-    CharacterData.methods["Float16"] = {
+
+    self.methods["Float16"] = {
         write = WriteFloat16,
         read = ReadFloat16,
         validate = ValidateFloat16,
         compare = CompareFloat16,
     }
-    CharacterData.methods["Float32"] = {
+
+    self.methods["Float32"] = {
         write = WriteFloat32,
         read = ReadFloat32,
         validate = ValidateNumber,
         compare = CompareNumber,
     }
 
-    CharacterData.methods["Byte"] = {
+    self.methods["Byte"] = {
         write = WriteByte,
         read = ReadByte,
         validate = ValidateByte,
         compare = CompareByte,
     }
 
-	CharacterData.packFunctions = {
+	self.packFunctions = {
         pos = "Vector3",
         angle = "Float16",
         stepUp = "Float16",
@@ -235,8 +284,7 @@ function CharacterData:ModuleSetup()
 		animNum3 = "Byte",
     }
 	
-	CharacterData.keys =
-	{
+	self.keys = {
 		"pos",
 		"angle",
 		"stepUp",
@@ -253,7 +301,7 @@ function CharacterData:ModuleSetup()
 	}
 	
 	
-	CharacterData.lerpFunctions = {
+	self.lerpFunctions = {
         pos = Lerp,
         angle = AngleLerp,
         stepUp = NumberLerp,
@@ -274,17 +322,16 @@ function CharacterData:ModuleSetup()
 	--This isn't serialized, instead the characterMod field is used to run the same modifications on client and server
 	self.animationNames = {}
 	self.animationIndices = {}
-		
+	
 	self:RegisterAnimationName("Idle")
 	self:RegisterAnimationName("Walk")
 	self:RegisterAnimationName("Run")
 	self:RegisterAnimationName("Jump")
 	self:RegisterAnimationName("Fall")
 	self:RegisterAnimationName("Push")
-	
 end
 
-function CharacterData.new()
+function CharacterData.new(): Class
     local self = setmetatable({
         serialized = {
             pos = Vector3.zero,
@@ -315,7 +362,7 @@ end
 
 --This smoothing is performed on the server only.
 --On client, use GetPosition
-function CharacterData:SmoothPosition(deltaTime, smoothScale)
+function CharacterData.SmoothPosition(self: Class, deltaTime, smoothScale)
     if (smoothScale == 1 or smoothScale == 0)  then
         self.serialized.pos = self.targetPosition
     else
@@ -323,48 +370,50 @@ function CharacterData:SmoothPosition(deltaTime, smoothScale)
     end
 end
 
-function CharacterData:ClearSmoothing()
+function CharacterData.ClearSmoothing(self: Class)
     self.serialized.pos = self.targetPosition
 end
 
 --Sets the target position
-function CharacterData:SetTargetPosition(pos, teleport)
+function CharacterData.SetTargetPosition(self: Class, pos: Vector3, teleport: boolean?)
     self.targetPosition = pos
-    if (teleport) then
+
+    if teleport then
         self:ClearSmoothing()
     end
 end
  
-function CharacterData:GetPosition()
+function CharacterData.GetPosition(self: Class)
     return self.serialized.pos
 end
 
-function CharacterData:SetFlatSpeed(num)
+function CharacterData.SetFlatSpeed(self: Class, num)
     self.serialized.flatSpeed = num
 end
 
-function CharacterData:SetAngle(angle)
+function CharacterData.SetAngle(self: Class, angle)
     self.serialized.angle = angle
 end
 
-function CharacterData:GetAngle()
+function CharacterData.GetAngle(self: Class)
     return self.serialized.angle
 end
 
-function CharacterData:SetStepUp(amount)
+function CharacterData.SetStepUp(self: Class, amount)
     self.serialized.stepUp = amount
 end
 
-function CharacterData:PlayAnimation(animName : string, animChannel, forceRestart, exclusiveTime)
-	
-	local animIndex =Animations:GetAnimationIndex(animName)
+function CharacterData.PlayAnimation(self: Class, animName : string, animChannel: number, forceRestart: boolean, exclusiveTime: number)
+	local animIndex = Animations:GetAnimationIndex(animName)
+
 	if (animIndex == nil) then
 		animIndex = 1
 	end
+
 	self:PlayAnimationIndex(animIndex, animChannel, forceRestart, exclusiveTime)
 end
 
-function CharacterData:PlayAnimationIndex(animNum, animChannel, forceRestart, exclusiveTime)
+function CharacterData.PlayAnimationIndex(self: Class, animNum, animChannel, forceRestart, exclusiveTime)
 	--Dont change animations during resim
 	if self.isResimulating == true then
 		return
@@ -378,6 +427,7 @@ function CharacterData:PlayAnimationIndex(animNum, animChannel, forceRestart, ex
 	if tick() < self.serialized.exclusiveAnimTime and forceRestart == false then
 		return
 	end
+
 	if exclusiveTime ~= nil and exclusiveTime > 0 then
 		self.serialized.exclusiveAnimTime = tick() + exclusiveTime
 	end
@@ -388,49 +438,51 @@ function CharacterData:PlayAnimationIndex(animNum, animChannel, forceRestart, ex
 	--Restart this anim, or its a different anim than we're currently playing
 	if forceRestart == true or self.serialized[slotString] ~= animNum then
 		self.serialized[counterString] += 1
+
 		if self.serialized[counterString] > 255 then
 			self.serialized[counterString] = 0
 		end
 	end
+
 	self.serialized[slotString] = animNum
 end
 
-
-function CharacterData:InternalSetAnim(animChannel, animNum)
+local function internalSetAnim(self: Class, animChannel: number, animNum: number)
     local counterString = "animCounter"..animChannel
     local slotString = "animNum"..animChannel
-
     self.serialized[counterString] += 1
+	
     if self.serialized[counterString] > 255 then
         self.serialized[counterString] = 0
     end
+
     self.serialized[slotString] = 0
 end
-function CharacterData:StopAnimation(animChannel)
-    self:InternalSetAnim(animChannel, 0)
+
+function CharacterData.StopAnimation(self: Class, animChannel: number)
+    internalSetAnim(self, animChannel, 0)
 end
 
-function CharacterData:StopAllAnimation()
+function CharacterData.StopAllAnimation(self: Class)
     self.serialized.exclusiveAnimTime = 0
-    self:InternalSetAnim(0, 0)
-    self:InternalSetAnim(1, 0)
-    self:InternalSetAnim(2, 0)
-    self:InternalSetAnim(3, 0)
+
+	for i = 0, 3 do
+		internalSetAnim(self, i, 0)
+	end
 end
 
-
-function CharacterData:Serialize()
+function CharacterData.Serialize(self: Class)
     local ret = {}
     --Todo: Add bitpacking
-    for key, _ in pairs(self.serialized) do
+
+    for key in pairs(self.serialized) do
         ret[key] = self.serialized[key]
     end
 
     return ret
 end
 
-function CharacterData:SerializeToBitBuffer(previousData, buf : buffer, offset: number)
-	
+function CharacterData.SerializeToBitBuffer(self: Class, previousData, buf: buffer, offset: number)
 	if (previousData == nil) then
 		return self:SerializeToBitBufferFast(buf, offset)
 	end
@@ -442,7 +494,6 @@ function CharacterData:SerializeToBitBuffer(previousData, buf : buffer, offset: 
 	local bitIndex = 0
 
 	if previousData == nil then
-		
 		--Slow path that wont be hit
 		contentBits = 0xFFFF
 		
@@ -473,14 +524,11 @@ function CharacterData:SerializeToBitBuffer(previousData, buf : buffer, offset: 
 	return offset
 end
 
-
-function CharacterData:SerializeToBitBufferFast(buf : buffer, offset: number)
-
+function CharacterData.SerializeToBitBufferFast(self: Class, buf: buffer, offset: number)
 	local contentWritePos = offset
 	offset += 2 --2 bytes contents
 
 	local contentBits = 0xFFFF
-	
 	local serialized = self.serialized
 	
 	offset = WriteVector3(buf, offset, serialized.pos)
@@ -501,37 +549,37 @@ function CharacterData:SerializeToBitBufferFast(buf : buffer, offset: number)
 	return offset
 end
 
-
-
-function CharacterData:DeserializeFromBitBuffer(buf : buffer, offset: number)
-	
+function CharacterData.DeserializeFromBitBuffer(self: Class, buf: buffer, offset: number)
 	local contentBits = buffer.readu16(buf, offset)
-	offset+=2
+	offset += 2
 	
 	local bitIndex = 0
+
 	for keyIndex, key in CharacterData.keys do
-		local value = self.serialized[key]
 		local hasBit = bit32.band(contentBits, bit32.lshift(1, bitIndex)) > 0
 		
         if hasBit then
             local func = CharacterData.methods[CharacterData.packFunctions[key]]
             self.serialized[key],offset  = func.read(buf, offset)
 		end
+
 		bitIndex += 1
 	end
+
 	return offset
 end
 
-function CharacterData:CopySerialized(otherSerialized)
+function CharacterData.CopySerialized(self: Class, otherSerialized: { [string]: any })
     for key, value in pairs(otherSerialized) do
         self.serialized[key] = value
     end
 end
 
-function CharacterData:Interpolate(dataA, dataB, fraction)
+function CharacterData.Interpolate(self: Class, dataA, dataB, fraction: number)
     local dataRecord = {}
-    for key, _ in pairs(dataA) do
-		local func = CharacterData.lerpFunctions[key]
+
+    for key: string in pairs(dataA) do
+		local func: ((a: any, b: any, frac: number) -> number)? = CharacterData.lerpFunctions[key]
 
         if func == nil then
             dataRecord[key] = dataB[key]
@@ -543,30 +591,28 @@ function CharacterData:Interpolate(dataA, dataB, fraction)
     return dataRecord
 end
 
-function CharacterData:AnimationNameToAnimationIndex(name)
-	
+function CharacterData.AnimationNameToAnimationIndex(self: Class, name: string): number
 	return self.animationNames[name]
 end
 
-function CharacterData:AnimationIndexToAnimationName(index)
+function CharacterData.AnimationIndexToAnimationName(self: Class, index: number): string
 	return self.animationIndices[index]
 end
 
-function CharacterData:RegisterAnimationName(name)
-	
+function CharacterData.RegisterAnimationName(self: Self, name: string)
 	table.insert(self.animationIndices, name)
 	local index = #self.animationIndices
 	
 	if (index > 255) then
 		error("Too many animations registered, you'll need to use a int16")
 	end
-	self.animationNames[name] = index
-		
+
+	self.animationNames[name] = index	
 end
 
-function CharacterData:ClearAnimationNames()
-	self.animationNames = {}
-	self.animationIndices = {}
+function CharacterData.ClearAnimationNames(self: Self)
+	table.clear(self.animationNames)
+	table.clear(self.animationIndices)
 end
 
 CharacterData:ModuleSetup()
