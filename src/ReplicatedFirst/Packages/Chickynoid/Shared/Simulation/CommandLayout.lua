@@ -1,36 +1,54 @@
-local module = {}
- 
+--!strict
 
+local module = {}
 local CrunchTable = require(script.Parent.Parent.Vendor.CrunchTable)
 
-function module:GetCommandLayout()
-	
-	if (self.commandLayout == nil) then
-		self.commandLayout = CrunchTable:CreateLayout()	
-			
-		self.commandLayout:Add("localFrame",CrunchTable.Enum.INT32)
-		self.commandLayout:Add("serverTime", CrunchTable.Enum.FLOAT)
-		self.commandLayout:Add("deltaTime", CrunchTable.Enum.FLOAT)
-		self.commandLayout:Add("snapshotServerFrame", CrunchTable.Enum.INT32)	
-		self.commandLayout:Add("playerStateFrame", CrunchTable.Enum.INT32)
-		self.commandLayout:Add("shiftLock", CrunchTable.Enum.UBYTE)
-		self.commandLayout:Add("x", CrunchTable.Enum.FLOAT)
-		self.commandLayout:Add("y", CrunchTable.Enum.FLOAT)
-		self.commandLayout:Add("z", CrunchTable.Enum.FLOAT)
-		self.commandLayout:Add("fa", CrunchTable.Enum.VECTOR3)
-		self.commandLayout:Add("f", CrunchTable.Enum.FLOAT)
-		self.commandLayout:Add("j", CrunchTable.Enum.FLOAT)
-	end
-	
-	return self.commandLayout	
+type Layout = CrunchTable.Layout
+type Self = typeof(module)
+
+export type Command = {
+	localFrame: number,
+	serverTime: number,
+	deltaTime: number,
+	snapshotServerFrame: number,
+	playerStateFrame: number,
+	shiftLock: number,
+	x: number,
+	y: number,
+	z: number,
+	fa: Vector3,
+	f: number,
+	j: number
+}
+
+type anyTable = {
+	[any]: any
+}
+
+local commandLayout = CrunchTable:CreateLayout()
+commandLayout:Add("localFrame",CrunchTable.Enum.INT32)
+commandLayout:Add("serverTime", CrunchTable.Enum.FLOAT)
+commandLayout:Add("deltaTime", CrunchTable.Enum.FLOAT)
+commandLayout:Add("snapshotServerFrame", CrunchTable.Enum.INT32)	
+commandLayout:Add("playerStateFrame", CrunchTable.Enum.INT32)
+commandLayout:Add("shiftLock", CrunchTable.Enum.UBYTE)
+commandLayout:Add("x", CrunchTable.Enum.FLOAT)
+commandLayout:Add("y", CrunchTable.Enum.FLOAT)
+commandLayout:Add("z", CrunchTable.Enum.FLOAT)
+commandLayout:Add("fa", CrunchTable.Enum.VECTOR3)
+commandLayout:Add("f", CrunchTable.Enum.FLOAT)
+commandLayout:Add("j", CrunchTable.Enum.FLOAT)
+
+function module.GetCommandLayout(self: Self)
+	return commandLayout
 end
 
-function module:EncodeCommand(command)
-	return CrunchTable:BinaryEncodeTable(command, self:GetCommandLayout())
+function module.EncodeCommand(self: Self, command: Command): anyTable
+	return CrunchTable:BinaryEncodeTable(command, commandLayout)
 end
 
-function module:DecodeCommand(command)
-	return CrunchTable:BinaryDecodeTable(command, self:GetCommandLayout()) 
+function module.DecodeCommand(self: Self, command: anyTable): Command
+	return CrunchTable:BinaryDecodeTable(command, commandLayout) 
 end
 
 return module

@@ -38,7 +38,7 @@ end
 local Layout = {}
 Layout.__index = Layout
 
-type Layout = typeof(setmetatable({} :: {
+export type Layout = typeof(setmetatable({} :: {
 	pairTable: {
 		[number]: {
 			field: string,
@@ -149,17 +149,13 @@ end
 
 function module.BinaryDecodeTable(self: Self, srcData: anyTable, layout: Layout)
 	local command = Deep(srcData)
-
-	if (command._b == nil) then
-		error("missing _b field")
-		return
-	end
-
+	assert(command._b, "missing _b field")
+	
 	local buf: buffer? = command._b
 	command._b = nil
 
 	local offset = 0
-	assert(type(buf) == "buffer")
+	assert(type(buf) == "buffer", "_b should be a buffer!")
 
 	local contentBits = buffer.readu16(buf, 0)
 	offset+=2

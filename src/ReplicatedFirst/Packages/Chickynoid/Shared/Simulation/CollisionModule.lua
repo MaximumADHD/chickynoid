@@ -23,7 +23,7 @@ type DynamicPartRecord = PartRecord & {
     Update: (self: DynamicPartRecord) -> (),
 }
 
-type HullData = {
+export type HullData = {
     startPos: Vector3,
     endPos: Vector3,
     fraction: number,

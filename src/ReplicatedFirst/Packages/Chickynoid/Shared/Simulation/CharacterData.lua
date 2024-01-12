@@ -403,7 +403,7 @@ function CharacterData.SetStepUp(self: Class, amount)
     self.serialized.stepUp = amount
 end
 
-function CharacterData.PlayAnimation(self: Class, animName : string, animChannel: number, forceRestart: boolean, exclusiveTime: number)
+function CharacterData.PlayAnimation(self: Class, animName : string, animChannel: number, forceRestart: boolean?, exclusiveTime: number?)
 	local animIndex = Animations:GetAnimationIndex(animName)
 
 	if (animIndex == nil) then
@@ -413,7 +413,7 @@ function CharacterData.PlayAnimation(self: Class, animName : string, animChannel
 	self:PlayAnimationIndex(animIndex, animChannel, forceRestart, exclusiveTime)
 end
 
-function CharacterData.PlayAnimationIndex(self: Class, animNum, animChannel, forceRestart, exclusiveTime)
+function CharacterData.PlayAnimationIndex(self: Class, animNum: number, animChannel: number, forceRestart: boolean?, exclusiveTime: number?)
 	--Dont change animations during resim
 	if self.isResimulating == true then
 		return
