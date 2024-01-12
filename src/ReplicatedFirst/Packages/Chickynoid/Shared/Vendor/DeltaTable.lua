@@ -1,3 +1,5 @@
+--!strict
+
 local module = {}
 type anyTable = { [any]: any }
 
@@ -22,9 +24,9 @@ local function Deep(tbl: anyTable): anyTable
 end
 
 --Compares two tables, and produces a new table containing the differences
-function module.MakeDeltaTable(self: Self, oldTable: anyTable, newTable: anyTable): deltaTable
+function module.MakeDeltaTable(self: Self, oldTable: anyTable, newTable: anyTable): (deltaTable, number)
     if (oldTable == nil) then
-        return Deep(newTable)
+        return Deep(newTable), 0
     end
     
     local deltaTable = {}

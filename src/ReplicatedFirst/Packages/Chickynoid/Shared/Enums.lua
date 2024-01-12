@@ -1,3 +1,4 @@
+--!strict
 local Enums = {}
 
 Enums.EventType = table.freeze({
