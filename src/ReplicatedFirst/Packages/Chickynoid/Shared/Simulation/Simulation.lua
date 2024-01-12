@@ -33,6 +33,43 @@ export type State = {
     executionOrder: number?,
 }
 
+type SimState = {
+    pos: Vector3,
+    vel: Vector3,
+    pushDir: Vector2,
+    jump: number,
+    angle: number,
+    targetAngle: number,
+    stepUp: number,
+    inAir: number,
+    jumpThrust: number,
+    pushing: number,
+    moveState: number,
+}
+
+type SimConsts = {
+    maxSpeed: number,
+    airSpeed: number,
+    accel: number,
+    airAccel: number,
+    jumpPunch: number,
+    turnSpeedFrac: number,
+    runFriction: number,
+    brakeFriction: number,
+    maxGroundSlope: number,
+    jumpThrustPower: number,
+    jumpThrustDecay: number,
+    gravity: number,
+    crashLandBehavior: number,
+    pushSpeed: number,
+    stepSize: number,
+}
+
+export type StateRecord = {
+    state: SimState,
+    constants: SimConsts,
+}
+
 export type Class = typeof(setmetatable({} :: {
     userId: number,
     moveStates: {State},
@@ -42,48 +79,16 @@ export type Class = typeof(setmetatable({} :: {
         [string]: number
     },
 
-    state: {
-        pos: Vector3,
-        vel: Vector3,
-        pushDir: Vector2,
-        jump: number,
-        angle: number,
-        targetAngle: number,
-        stepUp: number,
-        inAir: number,
-        jumpThrust: number,
-        pushing: number,
-        moveState: number,
-    },
+    state: SimState,
+    constants: SimConsts,
 
     characterData: CharacterData,
     lastGround: HullData?,
-
-    constants: {
-        maxSpeed: number,
-        airSpeed: number,
-        accel: number,
-        airAccel: number,
-        jumpPunch: number,
-        turnSpeedFrac: number,
-        runFriction: number,
-        brakeFriction: number,
-        maxGroundSlope: number,
-        jumpThrustPower: number,
-        jumpThrustDecay: number,
-        gravity: number,
-        crashLandBehavior: number,
-        pushSpeed: number,
-        stepSize: number,
-    },
-
     debugModel: Model?,
 }, Simulation))
 
-
 function Simulation.new(userId: number): Class
     local self = setmetatable({}, Simulation)
-
     self.userId = userId
 
     self.moveStates = {}
@@ -168,7 +173,6 @@ function Simulation.SetMoveState(self: Class, name: string)
     local record = index and self.moveStates[index]
 
     if record then
-        
         local prevRecord = self.moveStates[self.state.moveState]
 
         if (prevRecord and prevRecord.endState) then
@@ -499,14 +503,14 @@ end
 
 
 --This gets deltacompressed by the client/server chickynoids automatically
-function Simulation.WriteState(self: Class)
+function Simulation.WriteState(self: Class): StateRecord
     local record = {}
     record.state = DeltaTable:DeepCopy(self.state)
     record.constants = DeltaTable:DeepCopy(self.constants)
     return record
 end
 
-function Simulation.ReadState(self: Class, record)
+function Simulation.ReadState(self: Class, record: StateRecord)
     self.state = DeltaTable:DeepCopy(record.state)
     self.constants = DeltaTable:DeepCopy(record.constants)
 end

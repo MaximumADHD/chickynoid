@@ -7,6 +7,7 @@
     There is only one of these for the local player
 ]=]
 
+--!strict
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local UnreliableRemoteEvent = ReplicatedStorage:WaitForChild("ChickynoidUnreliableReplication")
@@ -19,13 +20,48 @@ local CollisionModule = require(path.Shared.Simulation.CollisionModule)
 local DeltaTable = require(path.Shared.Vendor.DeltaTable)
 
 local CommandLayout = require(path.Shared.Simulation.CommandLayout)
-
 local TrajectoryModule = require(path.Shared.Simulation.TrajectoryModule)
-local Enums = require(path.Shared.Enums)
-local EventType = Enums.EventType
 
 local ClientChickynoid = {}
 ClientChickynoid.__index = ClientChickynoid
+
+type Simulation = Simulation.Class
+type StateRecord = Simulation.StateRecord
+type LazyTable = DeltaTable.LazyTable
+type Command = CommandLayout.Command
+type State = Simulation.State
+
+type CacheRecord = {
+    localFrame: number,
+    stateRecord: StateRecord,
+}
+
+export type Class = typeof(setmetatable({} :: {
+    simulation: Simulation,
+    predictedCommands: {Command},
+
+    commandTimes: {
+        [Command]: number
+    },
+
+    localStateCache: { CacheRecord },
+    prevNetworkStates: { CacheRecord },
+
+    characterMod: string?,
+    localFrame: number,
+    lastSeenPlayerStateFrame: number,
+
+    ping: number,
+    mispredict: Vector3,
+    commandPacketlossPrevention: boolean,
+
+    debug: {
+        processedCommands: number,
+        showDebugSpheres: boolean,
+        useSkipResimulationOptimization: boolean,
+        debugParts: Folder?,
+    },
+}, ClientChickynoid))
 
 --[=[
     Constructs a new ClientChickynoid for the local player, spawning it at the specified
@@ -34,21 +70,20 @@ ClientChickynoid.__index = ClientChickynoid
     @param position Vector3 -- The position to spawn this character, provided by the server.
     @return ClientChickynoid
 ]=]
-function ClientChickynoid.new(position: Vector3, characterMod: string)
+function ClientChickynoid.new(position: Vector3, characterMod: string?)
     local self = setmetatable({
-
         simulation = Simulation.new(game.Players.LocalPlayer.UserId),
 		predictedCommands = {},
 		commandTimes = {}, --for ping calcs
         localStateCache = {},
         characterMod = characterMod,
         localFrame = 0,
+        ping = 0,
  
 		lastSeenPlayerStateFrame = 0,	--For the last playerState we got - the serverFrame the server was on when it was sent
 		prevNetworkStates = {},
 
-        mispredict = Vector3.new(0, 0, 0),
-		
+        mispredict = Vector3.zero,	
 		commandPacketlossPrevention = true, -- set this to true to duplicate packets
 		
         debug = {
@@ -67,14 +102,8 @@ function ClientChickynoid.new(position: Vector3, characterMod: string)
         loadedModule:Setup(self.simulation)
     end
 
-    self:HandleLocalPlayer()
-	
-
     return self
 end
-
-function ClientChickynoid:HandleLocalPlayer() end
-
 
 --[=[
     The server sends each client an updated world state on a fixed timestep. This
@@ -86,7 +115,7 @@ function ClientChickynoid:HandleLocalPlayer() end
     @param serverTime - Time when command was confirmed
     @param playerStateFrame -- Current frame on the server, used for tracking playerState
 ]=]
-function ClientChickynoid:HandleNewPlayerState(stateDelta, stateDeltaTime, lastConfirmed, serverTime, playerStateFrame)
+function ClientChickynoid.HandleNewPlayerState(self: Class, stateDelta: LazyTable, stateDeltaTime: number, lastConfirmed: number, serverTime: number, playerStateFrame: number)
     self:ClearDebugSpheres()
 	
 	local stateRecord = nil
@@ -140,7 +169,6 @@ function ClientChickynoid:HandleNewPlayerState(stateDelta, stateDeltaTime, lastC
 						end
 					end
 				end
-				
 	        end
 		end
 	end
@@ -217,7 +245,7 @@ function ClientChickynoid:HandleNewPlayerState(stateDelta, stateDeltaTime, lastC
 		
 		self.mispredict += delta
 		
-		if (delta.magnitude > 0.1) then
+		if (delta.Magnitude > 0.1) then
 			--Mispredicted
 			mispredicted = true
 		end
@@ -227,7 +255,7 @@ function ClientChickynoid:HandleNewPlayerState(stateDelta, stateDeltaTime, lastC
 end
 
 --Entry point every "frame"
-function ClientChickynoid:Heartbeat(command, serverTime: number, deltaTime: number)
+function ClientChickynoid.Heartbeat(self: Class, command: Command, serverTime: number, deltaTime: number)
     self.localFrame += 1
 	
 	--Store it
@@ -277,15 +305,16 @@ function ClientChickynoid:Heartbeat(command, serverTime: number, deltaTime: numb
     return command
 end
 
-function ClientChickynoid:SpawnDebugSphere(pos, color)
+function ClientChickynoid.SpawnDebugSphere(self: Class, pos: Vector3, color: Color3)
     if (self.debug.showDebugSpheres ~= true) then
         return
     end
 
     if (self.debug.debugParts == nil) then
-        self.debug.debugParts = Instance.new("Folder")
-        self.debug.debugParts.Name = "ChickynoidDebugSpheres"
-        self.debug.debugParts.Parent = workspace
+        local debugParts = Instance.new("Folder")
+        debugParts.Name = "ChickynoidDebugSpheres"
+        debugParts.Parent = workspace
+        self.debug.debugParts = debugParts
     end
 
     local part = Instance.new("Part")
@@ -301,7 +330,7 @@ function ClientChickynoid:SpawnDebugSphere(pos, color)
     part.Parent = self.debug.debugParts
 end
 
-function ClientChickynoid:ClearDebugSpheres()
+function ClientChickynoid.ClearDebugSpheres(self: Class)
     if (self.debug.showDebugSpheres ~= true) then
         return
     end
@@ -310,6 +339,8 @@ function ClientChickynoid:ClearDebugSpheres()
     end
 end
 
-function ClientChickynoid:Destroy() end
+function ClientChickynoid.Destroy(self: Class)
+    --
+end
 
 return ClientChickynoid

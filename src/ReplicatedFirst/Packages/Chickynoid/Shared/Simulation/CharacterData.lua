@@ -4,27 +4,28 @@
 local CharacterData = {}
 CharacterData.__index = CharacterData
 
+export type DataRecord = {
+	pos: Vector3,
+	angle: number,
+	stepUp: number,
+	flatSpeed: number,
+	exclusiveAnimTime: number,
+
+	animCounter0: number,
+	animNum0: number,
+
+	animCounter1: number,
+	animNum1: number,
+
+	animCounter2: number,
+	animNum2: number,
+
+	animCounter3: number,
+	animNum3: number,
+}
+
 export type Class = typeof(setmetatable({} :: {
-	serialized: {
-		pos: Vector3,
-		angle: number,
-		stepUp: number,
-		flatSpeed: number,
-		exclusiveAnimTime: number,
-
-		animCounter0: number,
-		animNum0: number,
-
-		animCounter1: number,
-		animNum1: number,
-
-		animCounter2: number,
-		animNum2: number,
-
-		animCounter3: number,
-		animNum3: number,
-	},
-
+	serialized: DataRecord,
 	isResimulating: boolean,
 	targetPosition: Vector3,
 }, CharacterData))
