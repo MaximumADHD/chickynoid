@@ -241,8 +241,8 @@ function CharacterModel.DestroyModel(self: Class)
 	end)
 end
 
-function CharacterModel.PlayerDisconnected(self: Class)
-	local modelData = self.modelPool[self.userId]
+function CharacterModel.PlayerDisconnected(self: Self, userId: number)
+	local modelData = self.modelPool[userId]
 
 	if (modelData and modelData.model) then
 		modelData.model:Destroy()

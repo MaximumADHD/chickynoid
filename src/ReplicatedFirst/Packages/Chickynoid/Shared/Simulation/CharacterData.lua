@@ -476,7 +476,7 @@ function CharacterData.Serialize(self: Class)
     local ret = {}
     --Todo: Add bitpacking
 
-    for key in pairs(self.serialized) do
+    for key: string in pairs(self.serialized) do
         ret[key] = self.serialized[key]
     end
 
@@ -576,7 +576,7 @@ function CharacterData.CopySerialized(self: Class, otherSerialized: { [string]: 
     end
 end
 
-function CharacterData.Interpolate(self: Class, dataA, dataB, fraction: number)
+function CharacterData.Interpolate(self: Self, dataA, dataB, fraction: number)
     local dataRecord = {}
 
     for key: string in pairs(dataA) do
