@@ -1,31 +1,47 @@
+--!strict
+
 local module = {}
+local active = false
 
-active = false
-module.tags = {}
-module.tagStack = {}
+type Record = {
+	averages: {number},
+	average: number,
+	currentSample: number,
+	startTime: number
+}
 
-function module:BeginSample(name)
-	
+module.tagStack = {} :: {string}
+
+module.tags = {} :: {
+	[string]: Record
+}
+
+type Self = typeof(module)
+
+function module.BeginSample(self: Self, name: string)
 	local rec = self.tags[name]
+
 	if (rec == nil) then
-		rec = {}
-		rec.averages = {}
-		rec.average = 0
-		rec.currentSample = 0
+		rec = {
+			averages = {},
+			average = 0,
+			currentSample = 0,
+			startTime = 0,
+		}
+		
 		self.tags[name] = rec
 	end
 	
 	rec.startTime = tick()
-	
 	table.insert(module.tagStack, name)	
 end
 
-function module:EndSample()
-	
+function module.EndSample(self: Self)
 	if (#module.tagStack == 0) then
 		warn("Profile tagstack already empty")
 		return
 	end
+
 	local rec = module.tags[module.tagStack[#module.tagStack]]
 	table.remove(module.tagStack, #module.tagStack)
 	rec.currentSample = tick() - rec.startTime
@@ -35,33 +51,37 @@ function module:EndSample()
 	if (#rec.averages > 10) then
 		table.remove(rec.averages,1)
 	end
-	
 end
 
-function module:Print(name)
+function module.Print(self: Self, name: string)
 	local rec = module.tags[name]
+
 	if (rec == nil) then
-		warn("Unknown tag")
+		warn("Unknown tag", name)
 		return
 	end
+
 	local average = 0
 	local counter = 0
-	for key,value in rec.averages do
+
+	for key, value in rec.averages do
 		average += value
 		counter += 1
 	end
+
 	average /= counter
-		
 	print(name, string.format("%.3f", rec.currentSample*1000) .. "ms avg:", string.format("%.3f", average*1000) .. "ms")
 end
 
-local nextTick = tick() + 1
-if (active == true) then
-	game["Run Service"].Heartbeat:Connect(function()
+if active then
+	local RunService = game:GetService("RunService")
+	local nextTick = tick() + 1	
+
+	RunService.Heartbeat:Connect(function()
 		if (tick() > nextTick) then
 			nextTick = tick() + 1
 			
-			for key,value in module.tags do
+			for key in module.tags do
 				module:Print(key)
 			end
 		end

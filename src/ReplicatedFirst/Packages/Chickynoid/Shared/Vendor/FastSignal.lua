@@ -5,6 +5,7 @@
 
 	@class ScriptSignal
 ]=]
+
 --!strict
 
 local ScriptSignal = {}
@@ -165,7 +166,7 @@ function ScriptSignal.Connect(self: Class, handler: (...any) -> ()): ScriptConne
 
     node._connection = connection
 
-    return connection :: ScriptConnection
+    return connection
 end
 
 --[=[

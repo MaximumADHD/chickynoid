@@ -1,14 +1,35 @@
 local module = {}
+type anyTable = { [any]: any }
+
+type deltaTable = anyTable & {
+    __deletions: { any }
+}
+
+type Self = typeof(module)
+
+local function Deep(tbl: anyTable): anyTable
+    local tCopy = table.create(#tbl)
+
+    for k, v in pairs(tbl) do
+        if type(v) == "table" then
+            tCopy[k] = Deep(v)
+        else
+            tCopy[k] = v
+        end
+    end
+
+    return tCopy
+end
 
 --Compares two tables, and produces a new table containing the differences
-function module:MakeDeltaTable(oldTable, newTable)
-    
+function module.MakeDeltaTable(self: Self, oldTable: anyTable, newTable: anyTable): deltaTable
     if (oldTable == nil) then
-        return self:DeepCopy(newTable)
+        return Deep(newTable)
     end
     
     local deltaTable = {}
     local changes = 0
+    
     for var, data in pairs(newTable) do
         if oldTable[var] == nil then
             deltaTable[var] = data
@@ -44,12 +65,12 @@ function module:MakeDeltaTable(oldTable, newTable)
 end
 
 --Produces a new table that is the combination of a target, and a deltaTable produced by MakeDeltaTable
-function module:ApplyDeltaTable(target, deltaTable)
-	
+function module:ApplyDeltaTable(target: anyTable, deltaTable: anyTable)
 	if (target == nil) then
 		target = {}
 	end
-    local newTable = self:DeepCopy(target)
+
+    local newTable = Deep(target)
     if newTable == nil then
         newTable = {}
     end
@@ -72,33 +93,11 @@ function module:ApplyDeltaTable(target, deltaTable)
     return newTable
 end
 
-function module:DeepCopy(sourceTable)
-    local function Deep(tbl)
-        local tCopy = table.create(#tbl)
-        for k, v in pairs(tbl) do
-            if type(v) == "table" then
-                tCopy[k] = Deep(v)
-            else
-                tCopy[k] = v
-            end
-        end
-        return tCopy
-    end
+function module.DeepCopy(self: Self, sourceTable: anyTable)
     return Deep(sourceTable)
 end
 
-function module:DeepCopySharedTable(sourceTable)
-	local function Deep(tbl)
-		local tCopy = {}
-		for k, v in tbl do
-			if type(v) == "table" then
-				tCopy[k] = Deep(v)
-			else
-				tCopy[k] = v
-			end
-		end
-		return tCopy
-	end
+function module.DeepCopySharedTable(self: Self, sourceTable: anyTable)
 	return Deep(sourceTable)
 end
 

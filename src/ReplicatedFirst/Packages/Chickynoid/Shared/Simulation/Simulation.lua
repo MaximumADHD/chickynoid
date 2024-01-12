@@ -16,8 +16,78 @@ local MathUtils = require(script.Parent.MathUtils)
 local Enums = require(script.Parent.Parent.Enums)
 local DeltaTable = require(script.Parent.Parent.Vendor.DeltaTable)
 
+type Simulation = {
+    userId: number,
 
-function Simulation.new(userId)
+    moveStates: {
+        [number]: {
+            name: string, 
+            updateState: (self: Simulation, cmd: Command) -> nil, 
+            alwaysThink: (self: Simulation, cmd: Command) -> nil, 
+            startState: (self: Simulation, prevState: string) -> nil, 
+            endState: (self: Simulation, nextState: string) -> nil, 
+            alwaysThinkLate: (self: Simulation, cmd: Command) -> nil, 
+            executionOrder: number
+        }
+    },
+
+    moveStateNames: {
+        [string]: number
+    },
+
+    executionOrder: {
+        [number]: {
+            name: string,
+            updateState: (self: Simulation, cmd: Command) -> nil,
+            alwaysThink: (self: Simulation, cmd: Command) -> nil,
+            startState: (self: Simulation, prevState: string) -> nil,
+            endState: (self: Simulation, nextState: string) -> nil,
+            alwaysThinkLate: (self: Simulation, cmd: Command) -> nil, 
+            executionOrder: number
+        }
+    },
+
+    state: {
+        pos: Vector3,
+        vel: Vector3,
+        pushDir: Vector2,
+        jump: number,
+        angle: number,
+        targetAngle: number,
+        stepUp: number,
+        inAir: number,
+        jumpThrust: number,
+        pushing: number,
+        moveState: number,
+    },
+
+    characterData: CharacterData,
+    lastGround: any,
+
+    constants: {
+        maxSpeed: number,
+        airSpeed: number,
+        accel: number,
+        airAccel: number,
+        jumpPunch: number,
+        turnSpeedFrac: number,
+        runFriction: number,
+        brakeFriction: number,
+        maxGroundSlope: number,
+        jumpThrustPower: number,
+        jumpThrustDecay: number,
+        gravity: number,
+        crashLandBehavior: number,
+        pushSpeed: number,
+        stepSize: number,
+    },
+
+    debugModel: Model,
+
+}
+
+
+function Simulation.new(userId: number)
     local self = setmetatable({}, Simulation)
 
     self.userId = userId
@@ -63,7 +133,6 @@ function Simulation.new(userId)
 
     self.constants.pushSpeed = 16 --set this lower than maxspeed if you want stuff to feel heavy
 	self.constants.stepSize = 2.2	--How high you can step over something
-	self.constants.gravity = -198
 
     self:RegisterMoveState("Walking", self.MovetypeWalking, nil, nil, nil)
     self:SetMoveState("Walking")

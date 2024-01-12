@@ -1,6 +1,6 @@
 local Enums = {}
 
-Enums.EventType = {
+Enums.EventType = table.freeze({
 	ChickynoidAdded = 0,
 	ChickynoidRemoving = 1,
 	Command = 2,
@@ -16,51 +16,44 @@ Enums.EventType = {
 	DebugBox = 11,
 
 	PlayerDisconnected = 12,
-}
-table.freeze(Enums.EventType)
+})
 
-Enums.NetworkProblemState = {
+Enums.NetworkProblemState = table.freeze({
 	None = 0,
 	TooFarBehind = 1,
 	TooFarAhead = 2,
 	TooManyCommands = 3,
 	DroppedPacketGood = 4,
 	DroppedPacketBad = 5
-}
-table.freeze(Enums.NetworkProblemState)
+})
 
-Enums.FpsMode = {
+Enums.FpsMode = table.freeze({
 	Uncapped = 0,
 	Hybrid = 1,
 	Fixed60 = 2,
-}
-table.freeze(Enums.FpsMode)
+})
 
-Enums.AnimChannel = {
+Enums.AnimChannel = table.freeze({
 	Channel0 = 0,
 	Channel1 = 1,
 	Channel2 = 2,
 	Channel3 = 3,
-}
-table.freeze(Enums.AnimChannel)
+})
 
-Enums.WeaponData = {
+Enums.WeaponData = table.freeze({
 	WeaponAdd = 0,
 	WeaponRemove = 1,
 	WeaponState = 2,
 	Equip = 3,
 	Dequip = 4,
-}
-table.freeze(Enums.WeaponData)
+})
 
-Enums.Crashland = {
+Enums.Crashland = table.freeze({
 	STOP = 0,
 	FULL_BHOP = 1,
 	FULL_BHOP_FORWARD = 2,
 	CAPPED_BHOP = 3,
 	CAPPED_BHOP_FORWARD = 4,
-
-}
-table.freeze(Enums.Crashland)
+})
 
 return Enums
