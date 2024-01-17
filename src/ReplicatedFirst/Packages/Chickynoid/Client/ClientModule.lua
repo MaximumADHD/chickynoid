@@ -38,7 +38,6 @@ local NetGraph = require(path.Client.NetGraph)
 local EventType = Enums.EventType
 local ClientModule = {}
 
-
 type CharacterData = CharacterData.Class
 type CharacterDataRecord = CharacterData.DataRecord
 
@@ -50,18 +49,18 @@ type Self = typeof(ClientModule)
 type WorldPlayer = {
     name: string,
     userId: number,
-    characterMod: string
+    characterMod: string,
 }
 
 ClientModule.localChickynoid = nil :: ClientChickynoid?
 
 ClientModule.snapshots = {} :: {
-    [number]: LazyTable
+    [number]: LazyTable,
 }
 
 ClientModule.estimatedServerTime = 0 --This is the time estimated from the snapshots
 ClientModule.estimatedServerTimeOffset = 0
-ClientModule.snapshotServerFrame = 0	--Server frame of the last snapshot we got
+ClientModule.snapshotServerFrame = 0 --Server frame of the last snapshot we got
 ClientModule.mostRecentSnapshotComparedTo = nil :: LazyTable? --When we've successfully compared against a previous snapshot, mark what it was (so we don't delete it!)
 
 ClientModule.validServerTime = false
@@ -76,18 +75,18 @@ ClientModule.characters = {} :: {
         characterData: CharacterData?,
         characterDataRecord: CharacterDataRecord?,
         localPlayer: boolean?,
-    }
+    },
 }
 
 ClientModule.localFrame = 0
 
 ClientModule.worldState = nil :: {
     flags: {
-        [string]: boolean
+        [string]: boolean,
     },
 
     players: {
-        [string]: WorldPlayer
+        [string]: WorldPlayer,
     },
 
     fpsMode: number,
@@ -95,15 +94,15 @@ ClientModule.worldState = nil :: {
 
     animations: {
         [string]: {
-            name: string, 
+            name: string,
             length: number,
             loop: boolean,
             priority: number,
             speed: number,
             weight: number,
-            enabled: boolean
-        }
-    }
+            enabled: boolean,
+        },
+    },
 }?
 
 ClientModule.fpsMax = 144 --Think carefully about changing this! Every extra frame clients make, puts load on the server
@@ -139,8 +138,8 @@ ClientModule.timeOfLastData = tick()
 ClientModule.characterModel = nil :: CharacterModel?
 
 --Server provided collision data
-ClientModule.playerSize = Vector3.new(2,5,5)
-ClientModule.collisionRoot = workspace           
+ClientModule.playerSize = Vector3.new(2, 5, 5)
+ClientModule.collisionRoot = workspace
 
 --Milliseconds of *extra* buffer time to account for ping flux
 ClientModule.interpolationBuffer = 20
@@ -159,9 +158,9 @@ ClientModule.fixedPhysicsSteps = false
 ClientModule.gameRunning = false
 
 ClientModule.flags = {
-	HANDLE_CAMERA = true,
-	USE_PRIMARY_PART = false,
-	USE_ALTERNATE_TIMING = true,
+    HANDLE_CAMERA = true,
+    USE_PRIMARY_PART = false,
+    USE_ALTERNATE_TIMING = true,
 }
 
 ClientModule.weaponsClient = ClientWeaponModule
@@ -169,7 +168,7 @@ ClientModule.previousPos = nil :: Vector3?
 
 function ClientModule.Setup(self: Self)
     local eventHandler = {} :: {
-        [number]: (event: LazyTable) -> ()
+        [number]: (event: LazyTable) -> (),
     }
 
     eventHandler[EventType.DebugBox] = function(event)
@@ -184,7 +183,7 @@ function ClientModule.Setup(self: Self)
         if self.localChickynoid == nil then
             self.localChickynoid = ClientChickynoid.new(position, event.characterMod)
         end
-        
+
         --Force the state
         assert(self.localChickynoid).simulation:ReadState(event.state)
         self.prevLocalCharacterData = nil
@@ -205,16 +204,22 @@ function ClientModule.Setup(self: Self)
             self.characterModel = nil
         end
 
-		game.Players.LocalPlayer.Character = nil
-		self.characters[game.Players.LocalPlayer.UserId] = nil
+        game.Players.LocalPlayer.Character = nil
+        self.characters[game.Players.LocalPlayer.UserId] = nil
     end
 
     -- EventType.State
     eventHandler[EventType.State] = function(event)
         if self.localChickynoid then
-			local mispredicted, ping = self.localChickynoid:HandleNewPlayerState(event.playerStateDelta, event.playerStateDeltaFrame, event.lastConfirmedCommand, event.serverTime, event.serverFrame)
-          
-            if (ping) then
+            local mispredicted, ping = self.localChickynoid:HandleNewPlayerState(
+                event.playerStateDelta,
+                event.playerStateDeltaFrame,
+                event.lastConfirmedCommand,
+                event.serverTime,
+                event.serverFrame
+            )
+
+            if ping then
                 --Keep a rolling history of pings
                 table.insert(self.pings, ping)
                 if #self.pings > 20 then
@@ -222,16 +227,16 @@ function ClientModule.Setup(self: Self)
                 end
 
                 self.stateCounter += 1
-                
-                if (self.showNetGraph == true) then
+
+                if self.showNetGraph == true then
                     self:AddPingToNetgraph(mispredicted, event.s, event.e, ping)
-				end
-				
-				if (mispredicted) then
-					FpsGraph:SetFpsColor(Color3.new(1,1,0))
-				else
-					FpsGraph:SetFpsColor(Color3.new(0,1,0))
-				end
+                end
+
+                if mispredicted then
+                    FpsGraph:SetFpsColor(Color3.new(1, 1, 0))
+                else
+                    FpsGraph:SetFpsColor(Color3.new(0, 1, 0))
+                end
             end
         end
     end
@@ -239,97 +244,93 @@ function ClientModule.Setup(self: Self)
     -- EventType.WorldState
     eventHandler[EventType.WorldState] = function(event)
         print("Got worldstate")
-		self.worldState = event.worldState
-		
-		Animations:SetAnimationsFromWorldState(event.worldState.animations)
+        self.worldState = event.worldState
+
+        Animations:SetAnimationsFromWorldState(event.worldState.animations)
     end
-	
-		
+
     -- EventType.Snapshot
-	eventHandler[EventType.Snapshot] = function(serialized)
+    eventHandler[EventType.Snapshot] = function(serialized)
         local event = self:DeserializeSnapshot(serialized)
-		
-		if (event == nil) then
-			return
-		end
-		
-		
-		if (self.partialSnapshot ~= nil and event.f < self.partialSnapshotFrame) then
-			--Discard, part of an abandoned snapshot
-			warn("Discarding old snapshot piece.")
-			return
-		end
-		
-		if (self.partialSnapshot ~= nil and event.f ~= self.partialSnapshotFrame) then
-			warn("Didnt get all the pieces of a snapshot, discarding and starting anew")
-			self.partialSnapshot = nil
-		end
-		
-		if (self.partialSnapshot == nil) then
-			self.partialSnapshot = {}
-			self.partialSnapshotFrame = event.f
-		end
+
+        if event == nil then
+            return
+        end
+
+        if self.partialSnapshot ~= nil and event.f < self.partialSnapshotFrame then
+            --Discard, part of an abandoned snapshot
+            warn("Discarding old snapshot piece.")
+            return
+        end
+
+        if self.partialSnapshot ~= nil and event.f ~= self.partialSnapshotFrame then
+            warn("Didnt get all the pieces of a snapshot, discarding and starting anew")
+            self.partialSnapshot = nil
+        end
+
+        if self.partialSnapshot == nil then
+            self.partialSnapshot = {}
+            self.partialSnapshotFrame = event.f
+        end
 
         assert(self.partialSnapshot)
-		
-		if (event.f == self.partialSnapshotFrame) then
-			--Store it
-		
-			self.partialSnapshot[event.s] = event
-			
-			local foundAll = true
-			for j=1,event.m do
-			 
-				if (self.partialSnapshot[j] == nil) then
-					foundAll = false
-					break
-				end
-			end
-			
-			if (foundAll == true) then
-				
-				self:SetupTime(event.serverTime)
-				
-				--Concatenate all the player records in here
-				local newRecords = {}
-				for _,snap in self.partialSnapshot do
-					for key,rec in snap.charData do
-						newRecords[key] = rec
-					end
-				end
-				event.charData = newRecords			
-				
-				--Record our snapshotServerFrame - this is used to let the server know what we have correctly seen
-				self.snapshotServerFrame = event.f
-			 				
-				--Record the snapshot
-				table.insert(self.snapshots, event)
-				self.previousSnapshot = event
 
-				--Remove old ones, but keep the most recent one we compared to
-				while (#self.snapshots > 40) do
-					table.remove(self.snapshots,1)
-				end
-				--Clear the partial
-				self.partialSnapshot = nil
-			end
-		end
+        if event.f == self.partialSnapshotFrame then
+            --Store it
+
+            self.partialSnapshot[event.s] = event
+
+            local foundAll = true
+            for j = 1, event.m do
+                if self.partialSnapshot[j] == nil then
+                    foundAll = false
+                    break
+                end
+            end
+
+            if foundAll == true then
+                self:SetupTime(event.serverTime)
+
+                --Concatenate all the player records in here
+                local newRecords = {}
+                for _, snap in self.partialSnapshot do
+                    for key, rec in snap.charData do
+                        newRecords[key] = rec
+                    end
+                end
+                event.charData = newRecords
+
+                --Record our snapshotServerFrame - this is used to let the server know what we have correctly seen
+                self.snapshotServerFrame = event.f
+
+                --Record the snapshot
+                table.insert(self.snapshots, event)
+                self.previousSnapshot = event
+
+                --Remove old ones, but keep the most recent one we compared to
+                while #self.snapshots > 40 do
+                    table.remove(self.snapshots, 1)
+                end
+                --Clear the partial
+                self.partialSnapshot = nil
+            end
+        end
     end
 
     eventHandler[EventType.CollisionData] = function(event)
         self.playerSize = event.playerSize
         self.collisionRoot = event.data
         CollisionModule:MakeWorld(self.collisionRoot, self.playerSize)
-	end
-	
-	eventHandler[EventType.PlayerDisconnected] = function(event)
-		local characterRecord = self.characters[event.userId]
-        if (characterRecord and characterRecord.characterModel) then
+    end
+
+    eventHandler[EventType.PlayerDisconnected] = function(event)
+        local characterRecord = self.characters[event.userId]
+        if characterRecord and characterRecord.characterModel then
             characterRecord.characterModel:DestroyModel()
         end
         --Final Cleanup
         CharacterModel:PlayerDisconnected(event.userId)
-	end
+    end
 
     RemoteEvent.OnClientEvent:Connect(function(event)
         self.timeOfLastData = tick()
@@ -341,120 +342,116 @@ function ClientModule.Setup(self: Self)
             ClientWeaponModule:HandleEvent(self, event)
             self.OnNetworkEvent:Fire(self, event)
         end
-	end)
-	
-	UnreliableRemoteEvent.OnClientEvent:Connect(function(event)
-		self.timeOfLastData = tick()
+    end)
 
-		local func = eventHandler[event.t]
-		if func ~= nil then
-			func(event)
-		else
-			ClientWeaponModule:HandleEvent(self, event)
-			self.OnNetworkEvent:Fire(self, event)
-		end
-	end)
+    UnreliableRemoteEvent.OnClientEvent:Connect(function(event)
+        self.timeOfLastData = tick()
 
+        local func = eventHandler[event.t]
+        if func ~= nil then
+            func(event)
+        else
+            ClientWeaponModule:HandleEvent(self, event)
+            self.OnNetworkEvent:Fire(self, event)
+        end
+    end)
 
     local function Step(deltaTime)
-		
-		if (self.gameRunning == false) then
-			return
-		end
-		
-        if (self.showFpsGraph == false) then
+        if self.gameRunning == false then
+            return
+        end
+
+        if self.showFpsGraph == false then
             FpsGraph:Hide()
         end
-        if (self.showNetGraph == false) then
+        if self.showNetGraph == false then
             NetGraph:Hide()
         end
 
         self:DoFpsCount(deltaTime)
-  
+
         --Do a framerate cap to 144? fps
         self.cappedElapsedTime += deltaTime
         self.timeSinceLastThink += deltaTime
         local fraction = 1 / self.fpsMax
-		
-		--Do we process a frame?
+
+        --Do we process a frame?
         if self.cappedElapsedTime < fraction and self.fpsIsCapped == true then
             return --If not enough time for a whole frame has elapsed
         end
-		self.cappedElapsedTime = math.fmod(self.cappedElapsedTime, fraction)
-		
-		
-		--Netgraph
-        if (self.showFpsGraph == true) then
+        self.cappedElapsedTime = math.fmod(self.cappedElapsedTime, fraction)
+
+        --Netgraph
+        if self.showFpsGraph == true then
             FpsGraph:Scroll()
             local fps = 1 / self.timeSinceLastThink
             FpsGraph:AddBar(fps / 2, FpsGraph.fpsColor, 0)
         end
-		
-		--Think
-		self:ProcessFrame(self.timeSinceLastThink)
 
-		--Do Client Mods
+        --Think
+        self:ProcessFrame(self.timeSinceLastThink)
+
+        --Do Client Mods
         local modules = ClientMods:GetMods("clientmods")
         for _, value in pairs(modules) do
-			value:Step(self, self.timeSinceLastThink)
-		end
-		
-		self.timeSinceLastThink = 0
-	end
-	
-	
-	local bindToRenderStepLatch = false
- 
-	--BindToRenderStep is the correct place to step your own custom simulations. The dt is the same one used by particle systems and cameras.
-	--1) The deltaTime is sampled really early in the frame and has the least flux (way less than heartbeat)
-	--2) Functionally, this is similar to PreRender, but PreRender runs AFTER the camera has updated, but we need to run before it 
-	--	 	(hence Enum.RenderPriority.Input)
-	--3) Oh No. BindToRenderStep is not called in the background, so we use heartbeat to call Step if BindToRenderStep is not available
-	RunService:BindToRenderStep("chickynoidCharacterUpdate", Enum.RenderPriority.Input.Value, function(dt) 
-		if (self.flags.USE_ALTERNATE_TIMING == true) then
-			if (dt > 0.2) then
-				dt = 0.2
-			end
-			Step(dt)
-			bindToRenderStepLatch = false
-		end
-	end)
-		
-	RunService.Heartbeat:Connect(function(dt)
-		if (self.flags.USE_ALTERNATE_TIMING == true) then
-			if (bindToRenderStepLatch == true) then
-				Step(dt)
-			end
-			bindToRenderStepLatch = true
-		else
-			Step(dt)
-		end
-	end)
-	
+            value:Step(self, self.timeSinceLastThink)
+        end
+
+        self.timeSinceLastThink = 0
+    end
+
+    local bindToRenderStepLatch = false
+
+    --BindToRenderStep is the correct place to step your own custom simulations. The dt is the same one used by particle systems and cameras.
+    --1) The deltaTime is sampled really early in the frame and has the least flux (way less than heartbeat)
+    --2) Functionally, this is similar to PreRender, but PreRender runs AFTER the camera has updated, but we need to run before it
+    --	 	(hence Enum.RenderPriority.Input)
+    --3) Oh No. BindToRenderStep is not called in the background, so we use heartbeat to call Step if BindToRenderStep is not available
+    RunService:BindToRenderStep("chickynoidCharacterUpdate", Enum.RenderPriority.Input.Value, function(dt)
+        if self.flags.USE_ALTERNATE_TIMING == true then
+            if dt > 0.2 then
+                dt = 0.2
+            end
+            Step(dt)
+            bindToRenderStepLatch = false
+        end
+    end)
+
+    RunService.Heartbeat:Connect(function(dt)
+        if self.flags.USE_ALTERNATE_TIMING == true then
+            if bindToRenderStepLatch == true then
+                Step(dt)
+            end
+            bindToRenderStepLatch = true
+        else
+            Step(dt)
+        end
+    end)
+
     --Load the mods
     local mods = ClientMods:GetMods("clientmods")
     for id, mod in mods do
         mod:Setup(self)
-		print("Loaded", id)
+        print("Loaded", id)
     end
 
     --WeaponModule
-	ClientWeaponModule:Setup(self)
-	
-	--Wait for the game to be loaded
-	task.spawn(function()
-		while(game:IsLoaded() == false) do
-			wait()
-		end
+    ClientWeaponModule:Setup(self)
 
-		print("Sending loaded event")
-		self.gameRunning = true
-		
-		--Notify the server
-		local event = {}
-		event.id = "loaded"
-		RemoteEvent:FireServer(event)
-	end)
+    --Wait for the game to be loaded
+    task.spawn(function()
+        while game:IsLoaded() == false do
+            wait()
+        end
+
+        print("Sending loaded event")
+        self.gameRunning = true
+
+        --Notify the server
+        local event = {}
+        event.id = "loaded"
+        RemoteEvent:FireServer(event)
+    end)
 end
 
 function ClientModule.GetClientChickynoid(self: Self)
@@ -462,7 +459,7 @@ function ClientModule.GetClientChickynoid(self: Self)
 end
 
 function ClientModule.GetCollisionRoot(self: Self)
-    return self.collisionRoot 
+    return self.collisionRoot
 end
 
 function ClientModule.DoFpsCount(self: Self, deltaTime: number)
@@ -476,17 +473,17 @@ function ClientModule.DoFpsCount(self: Self, deltaTime: number)
         --print("FPS: real ", self.frameCounter, "( physics: ",self.frameSimCounter ,")")
 
         if self.frameCounter > self.fpsMax + 5 then
-            if (self.showFpsGraph == true) then
+            if self.showFpsGraph == true then
                 FpsGraph:SetWarning("(Cap your fps to " .. self.fpsMax .. ")")
             end
             self.fpsIsCapped = true
         else
-            if (self.showFpsGraph == true) then
+            if self.showFpsGraph == true then
                 FpsGraph:SetWarning("")
             end
             self.fpsIsCapped = false
         end
-        if (self.showFpsGraph == true) then
+        if self.showFpsGraph == true then
             if self.frameCounter == self.frameSimCounter then
                 FpsGraph:SetFpsText("Fps: " .. self.frameCounter .. " CmdRate: " .. self.stateCounter)
             else
@@ -570,9 +567,9 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
                     end
                 end
 
-				--Step!
-				 
-				local command = self:GenerateCommandBase(pointInTimeToRender, frac)
+                --Step!
+
+                local command = self:GenerateCommandBase(pointInTimeToRender, frac)
 
                 if self.localChickynoid then
                     self.localChickynoid:Heartbeat(command, pointInTimeToRender, frac)
@@ -597,7 +594,7 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
                 end
             end
 
-            if (self.showFpsGraph == true) then
+            if self.showFpsGraph == true then
                 if count > 0 then
                     local pixels = 1000 / fixedPhysics
                     FpsGraph:AddPoint((count * pixels), Color3.new(0, 1, 1), 3)
@@ -608,18 +605,18 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
             end
         else
             --For this to work, the server has to accept deltaTime from the client
-			local command = self:GenerateCommandBase(pointInTimeToRender, deltaTime) 
+            local command = self:GenerateCommandBase(pointInTimeToRender, deltaTime)
             self.localChickynoid:Heartbeat(command, pointInTimeToRender, deltaTime)
             ClientWeaponModule:ProcessCommand(command)
         end
 
         if self.characterModel == nil and self.localChickynoid then
             --Spawn the character in
-			print("Creating local model for UserId", game.Players.LocalPlayer.UserId)
-			local mod = self:GetPlayerDataByUserId(game.Players.LocalPlayer.UserId)
+            print("Creating local model for UserId", game.Players.LocalPlayer.UserId)
+            local mod = self:GetPlayerDataByUserId(game.Players.LocalPlayer.UserId)
 
             if mod then
-                local charModel = CharacterModel.new( game.Players.LocalPlayer.UserId, mod.characterMod)
+                local charModel = CharacterModel.new(game.Players.LocalPlayer.UserId, mod.characterMod)
                 self.characterModel = charModel
 
                 for _, characterModelCallback in ipairs(self.characterModelCallbacks) do
@@ -628,7 +625,7 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
 
                 charModel:CreateModel()
                 self.OnCharacterModelCreated:Fire(charModel)
-                
+
                 local record = {}
                 record.userId = game.Players.LocalPlayer.UserId
                 record.characterModel = charModel
@@ -640,23 +637,24 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
 
         if self.characterModel ~= nil then
             --Blend out the mispredict value
-            self.localChickynoid.mispredict = MathUtils:VelocityFriction(
-                self.localChickynoid.mispredict,
-                0.1,
-                deltaTime
-            )
+            self.localChickynoid.mispredict =
+                MathUtils:VelocityFriction(self.localChickynoid.mispredict, 0.1, deltaTime)
             self.characterModel.mispredict = self.localChickynoid.mispredict
-			
-			local localRecord = self.characters[game.Players.LocalPlayer.UserId]
-						
+
+            local localRecord = self.characters[game.Players.LocalPlayer.UserId]
+
             if self.fixedPhysicsSteps == true then
                 if
                     self.useSubFrameInterpolation == false
                     or subFrameFraction == 0
                     or self.prevLocalCharacterData == nil
                 then
-					self.characterModel:Think(deltaTime, self.localChickynoid.simulation.characterData.serialized, bulkMoveToList)
-					localRecord.characterData = self.localChickynoid.simulation.characterData
+                    self.characterModel:Think(
+                        deltaTime,
+                        self.localChickynoid.simulation.characterData.serialized,
+                        bulkMoveToList
+                    )
+                    localRecord.characterData = self.localChickynoid.simulation.characterData
                 else
                     --Calculate a sub-frame interpolation
                     local data = CharacterData:Interpolate(
@@ -664,24 +662,28 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
                         self.localChickynoid.simulation.characterData.serialized,
                         subFrameFraction
                     )
-					self.characterModel:Think(deltaTime, data)
-					-- localRecord.characterData = data -- !! FIXME: This assignment is invalid.
+                    self.characterModel:Think(deltaTime, data)
+                    -- localRecord.characterData = data -- !! FIXME: This assignment is invalid.
                 end
             else
-				self.characterModel:Think(deltaTime, self.localChickynoid.simulation.characterData.serialized, bulkMoveToList)
-				localRecord.characterData = self.localChickynoid.simulation.characterData
+                self.characterModel:Think(
+                    deltaTime,
+                    self.localChickynoid.simulation.characterData.serialized,
+                    bulkMoveToList
+                )
+                localRecord.characterData = self.localChickynoid.simulation.characterData
             end
-			
-			--store local data
-			localRecord.frame = self.localFrame
+
+            --store local data
+            localRecord.frame = self.localFrame
 
             if localRecord.characterData then
                 localRecord.position = localRecord.characterData:GetPosition()
             end
-            
-            if (self.showFpsGraph == true) then
+
+            if self.showFpsGraph == true then
                 if self.showDebugMovement == true then
-					local pos = localRecord.position
+                    local pos = localRecord.position
                     if pos and self.previousPos ~= nil then
                         local delta = pos - self.previousPos
                         FpsGraph:AddPoint(delta.Magnitude * 200, Color3.new(0, 0, 1), 4)
@@ -691,25 +693,25 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
             end
 
             -- Bind the camera
-            if (self.flags.HANDLE_CAMERA ~= false) then
-				local camera = workspace.CurrentCamera
-				
-				if (self.flags.USE_PRIMARY_PART == true) then
-					--if you dont care about first person, this is the correct way to do it
-					--for models with no humanoid (head tracking)
-					if ( self.characterModel.model and  self.characterModel.model.PrimaryPart) then
-	                	if camera.CameraSubject ~= self.characterModel.model.PrimaryPart then
-							camera.CameraSubject = self.characterModel.model.PrimaryPart
-							camera.CameraType = Enum.CameraType.Custom
-						end
-					end
-				else
-					--if you do, set it to the model
-					if self.characterModel.model and camera.CameraSubject ~= self.characterModel.model.PrimaryPart then
-						camera.CameraSubject = self.characterModel.model
-						camera.CameraType = Enum.CameraType.Custom
-					end
-				end
+            if self.flags.HANDLE_CAMERA ~= false then
+                local camera = workspace.CurrentCamera
+
+                if self.flags.USE_PRIMARY_PART == true then
+                    --if you dont care about first person, this is the correct way to do it
+                    --for models with no humanoid (head tracking)
+                    if self.characterModel.model and self.characterModel.model.PrimaryPart then
+                        if camera.CameraSubject ~= self.characterModel.model.PrimaryPart then
+                            camera.CameraSubject = self.characterModel.model.PrimaryPart
+                            camera.CameraType = Enum.CameraType.Custom
+                        end
+                    end
+                else
+                    --if you do, set it to the model
+                    if self.characterModel.model and camera.CameraSubject ~= self.characterModel.model.PrimaryPart then
+                        camera.CameraSubject = self.characterModel.model
+                        camera.CameraType = Enum.CameraType.Custom
+                    end
+                end
             end
 
             --Bind the local character, which activates all the thumbsticks etc
@@ -728,20 +730,18 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
 
         prev = value
     end
-	
-	local debugData = {}
-	
-	if prev and last and prev ~= last then
-		
+
+    local debugData = {}
+
+    if prev and last and prev ~= last then
         --So pointInTimeToRender is between prev.t and last.t
         local frac = (pointInTimeToRender - prev.serverTime) / timeBetweenServerFrames
-		
-		debugData.frac = frac
-		debugData.prev = prev.t
-		debugData.last = last.t
-		
-		 
-		for userId, lastData in last.charData do
+
+        debugData.frac = frac
+        debugData.prev = prev.t
+        debugData.last = last.t
+
+        for userId, lastData in last.charData do
             local prevData = prev.charData[userId]
 
             if prevData == nil then
@@ -754,9 +754,9 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
             --Add the character
             if character == nil then
                 local record = {}
-				record.userId = userId
-                
-				local mod = self:GetPlayerDataByUserId(userId)
+                record.userId = userId
+
+                local mod = self:GetPlayerDataByUserId(userId)
 
                 if mod then
                     record.characterModel = CharacterModel.new(userId, mod.characterMod)
@@ -768,48 +768,48 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
             end
 
             character.frame = self.localFrame
-			character.position = dataRecord.pos
-			character.characterDataRecord = dataRecord
-			
+            character.position = dataRecord.pos
+            character.characterDataRecord = dataRecord
+
             --Update it
             if character.characterModel then
                 character.characterModel:Think(deltaTime, dataRecord, bulkMoveToList)
             end
-		end
+        end
 
         --Remove any characters who were not in this snapshot
-		for key, value in self.characters do
-			if (key == game.Players.LocalPlayer.UserId) then
-				continue
-			end
-			
+        for key, value in self.characters do
+            if key == game.Players.LocalPlayer.UserId then
+                continue
+            end
+
             if value.frame ~= self.localFrame then
-				self.OnCharacterModelDestroyed:Fire(value.characterModel)
+                self.OnCharacterModelDestroyed:Fire(value.characterModel)
 
                 if value.characterModel then
                     value.characterModel:DestroyModel()
                     value.characterModel = nil
                 end
-                
-				self.characters[key] = nil
+
+                self.characters[key] = nil
             end
         end
     end
 
     --bulkMoveTo
-	if (bulkMoveToList) then
+    if bulkMoveToList then
         workspace:BulkMoveTo(bulkMoveToList.parts, bulkMoveToList.cframes, Enum.BulkMoveMode.FireCFrameChanged)
     end
 
     --render in the rockets
     -- local timeToRenderRocketsAt = self.estimatedServerTime
     local timeToRenderRocketsAt = pointInTimeToRender --laggier but more correct
-	ClientWeaponModule:Think(timeToRenderRocketsAt, deltaTime)
-	
-	if (self.debugMarkPlayers ~= nil) then
-		self:DrawBoxOnAllPlayers(self.debugMarkPlayers)
+    ClientWeaponModule:Think(timeToRenderRocketsAt, deltaTime)
+
+    if self.debugMarkPlayers ~= nil then
+        self:DrawBoxOnAllPlayers(self.debugMarkPlayers)
         self.debugMarkPlayers = nil
-	end
+    end
 end
 
 function ClientModule.GetCharacters(self: Self)
@@ -836,84 +836,82 @@ function ClientModule.SetCharacterModel(self: Self, callback: (userId: number) -
 end
 
 function ClientModule.GetPlayerDataBySlotId(self: Self, slotId: number): WorldPlayer?
-	local slotString = tostring(slotId)
+    local slotString = tostring(slotId)
 
-	if (self.worldState == nil) then
-		return nil
-	end
+    if self.worldState == nil then
+        return nil
+    end
 
-	--worldState.players is indexed by a *STRING* not a int
-	return self.worldState.players[slotString]
+    --worldState.players is indexed by a *STRING* not a int
+    return self.worldState.players[slotString]
 end
 
 function ClientModule:GetPlayerDataByUserId(userId: number): WorldPlayer? -- TODO: Type properly.
-	if (self.worldState == nil) then
-		return nil
-	end
+    if self.worldState == nil then
+        return nil
+    end
 
-	for key, value in pairs(self.worldState.players) do
-		if (value.userId == userId) then
-			return value
-		end
-	end
+    for key, value in pairs(self.worldState.players) do
+        if value.userId == userId then
+            return value
+        end
+    end
 
-	return nil
+    return nil
 end
 
 function ClientModule.DeserializeSnapshot(self: Self, event): LazyTable?
-	local offset = 0
-	local bitBuffer = event.b
+    local offset = 0
+    local bitBuffer = event.b
 
-	local recordCount = buffer.readu8(bitBuffer, offset)
-	offset+=1
-	
-	--Find what this was delta compressed against	
-	local previousSnapshot = nil  
+    local recordCount = buffer.readu8(bitBuffer, offset)
+    offset += 1
 
-	for key, value in self.snapshots do
-		if (value.f == event.cf) then
-			previousSnapshot = value
-			break
-		end
-	end
+    --Find what this was delta compressed against
+    local previousSnapshot = nil
 
-	if (previousSnapshot == nil and event.cf ~= nil) then
-		warn("Prev snapshot not found" , event.cf)
-		print("num snapshots", #self.snapshots)
-		return nil
-	end
+    for key, value in self.snapshots do
+        if value.f == event.cf then
+            previousSnapshot = value
+            break
+        end
+    end
 
-	self.mostRecentSnapshotComparedTo = previousSnapshot
-	
+    if previousSnapshot == nil and event.cf ~= nil then
+        warn("Prev snapshot not found", event.cf)
+        print("num snapshots", #self.snapshots)
+        return nil
+    end
+
+    self.mostRecentSnapshotComparedTo = previousSnapshot
+
     event.charData = {}
- 
-	for _ = 1, recordCount do
+
+    for _ = 1, recordCount do
         local record = CharacterData.new()
 
-		--CharacterData.CopyFrom(self.previous)
-		
-		local slotId = buffer.readu8(bitBuffer,offset)
-		offset+=1
+        --CharacterData.CopyFrom(self.previous)
 
-		local user = self:GetPlayerDataBySlotId(slotId)
+        local slotId = buffer.readu8(bitBuffer, offset)
+        offset += 1
+
+        local user = self:GetPlayerDataBySlotId(slotId)
         if user then
             if previousSnapshot ~= nil then
                 local previousRecord = previousSnapshot.charData[user.userId]
                 if previousRecord then
                     record:CopySerialized(previousRecord)
-				end
+                end
             end
             offset = record:DeserializeFromBitBuffer(bitBuffer, offset)
-				
+
             event.charData[user.userId] = record.serialized
         else
-            
-			warn("UserId for slot " .. slotId .. " not found!")
-			--So things line up
-			offset = record:DeserializeFromBitBuffer(bitBuffer, offset)
+            warn("UserId for slot " .. slotId .. " not found!")
+            --So things line up
+            offset = record:DeserializeFromBitBuffer(bitBuffer, offset)
         end
-	end
- 
+    end
 
     return event
 end
@@ -924,7 +922,7 @@ function ClientModule:GetGui()
 end
 
 function ClientModule:DebugMarkAllPlayers(text)
-	self.debugMarkPlayers = text
+    self.debugMarkPlayers = text
 end
 
 function ClientModule.DrawBoxOnAllPlayers(self: Self, text)
@@ -936,16 +934,15 @@ function ClientModule.DrawBoxOnAllPlayers(self: Self, text)
     end
 
     local models = self:GetCharacters()
-	for _, record in pairs(models) do
-		
-		if (record.localPlayer == true) then
-			continue
-		end
+    for _, record in pairs(models) do
+        if record.localPlayer == true then
+            continue
+        end
 
         if not record.position then
             continue
         end
-		
+
         local instance = Instance.new("Part")
         instance.Size = Vector3.new(3, 5, 3)
         instance.Transparency = 0.5
@@ -957,7 +954,7 @@ function ClientModule.DrawBoxOnAllPlayers(self: Self, text)
         instance.Position = record.position
         instance.Parent = workspace
 
-        self:AdornText(instance, Vector3.new(0,3,0), text, Color3.new(0.5,1,0.5))
+        self:AdornText(instance, Vector3.new(0, 3, 0), text, Color3.new(0.5, 1, 0.5))
 
         self.debugBoxes[instance] = tick() + 5
     end
@@ -987,7 +984,7 @@ function ClientModule.DebugBox(self: Self, pos: Vector3, text: string)
     adornment.Parent = instance
 
     self.debugBoxes[instance] = tick() + 5
-    self:AdornText(instance, Vector3.new(0,6,0), text, Color3.new(0, 0.501960, 1))
+    self:AdornText(instance, Vector3.new(0, 6, 0), text, Color3.new(0, 0.501960, 1))
 end
 
 function ClientModule.AdornText(self: Self, part: BasePart, offset: Vector3, text: string, color: Color3)
@@ -997,35 +994,41 @@ function ClientModule.AdornText(self: Self, part: BasePart, offset: Vector3, tex
 
     local billboard = Instance.new("BillboardGui")
     billboard.AlwaysOnTop = true
-    billboard.Size = UDim2.new(0,50,0,20)
+    billboard.Size = UDim2.new(0, 50, 0, 20)
     billboard.Adornee = attachment
     billboard.Parent = attachment
-    
+
     local textLabel = Instance.new("TextLabel")
     textLabel.TextScaled = true
     textLabel.TextColor3 = color
     textLabel.BackgroundTransparency = 1
-    textLabel.Size = UDim2.new(1,0,1,0)
+    textLabel.Size = UDim2.new(1, 0, 1, 0)
     textLabel.Text = text
-	textLabel.Parent = billboard
-	textLabel.AutoLocalize = false
+    textLabel.Parent = billboard
+    textLabel.AutoLocalize = false
 end
 
-function ClientModule.AddPingToNetgraph(self: Self, mispredicted: boolean, serverHealthFps: number, networkProblem: number, ping: number)
+function ClientModule.AddPingToNetgraph(
+    self: Self,
+    mispredicted: boolean,
+    serverHealthFps: number,
+    networkProblem: number,
+    ping: number
+)
     --Ping graph
     local total = 0
 
     for _, ping in pairs(self.pings) do
         total += ping
     end
-    
+
     total /= #self.pings
     NetGraph:Scroll()
 
     local color1 = Color3.new(1, 1, 1)
     local color2 = Color3.new(1, 1, 0)
 
-	if mispredicted == false then
+    if mispredicted == false then
         NetGraph:AddPoint(ping * 0.25, color1, 4)
         NetGraph:AddPoint(total * 0.25, color2, 3)
     else
@@ -1040,9 +1043,9 @@ function ClientModule.AddPingToNetgraph(self: Self, mispredicted: boolean, serve
         NetGraph:AddPoint(serverHealthFps, Color3.new(0.101961, 1, 0), 2)
     elseif serverHealthFps >= 50 then
         NetGraph:AddPoint(serverHealthFps, Color3.new(1, 0.666667, 0), 2)
-	else
-		NetGraph:AddPoint(serverHealthFps, Color3.new(1, 0, 0), 2)
-	end
+    else
+        NetGraph:AddPoint(serverHealthFps, Color3.new(1, 0, 0), 2)
+    end
 
     --Blue bar
     if networkProblem == Enums.NetworkProblemState.TooFarBehind then
@@ -1055,23 +1058,23 @@ function ClientModule.AddPingToNetgraph(self: Self, mispredicted: boolean, serve
     --Orange bar
     if networkProblem == Enums.NetworkProblemState.TooManyCommands then
         NetGraph:AddBar(100, Color3.new(1, 0.666667, 0), 0)
-	end
-	--teal bar
-	if networkProblem == Enums.NetworkProblemState.CommandUnderrun then
-		NetGraph:AddBar(100, Color3.new(0, 1, 1), 0)
-	end
-	
-	--Yellow bar
-	if networkProblem == Enums.NetworkProblemState.DroppedPacketGood then
-		NetGraph:AddBar(100, Color3.new(0.898039, 1, 0), 0)
-	end
-	--Red Bar
-	if networkProblem == Enums.NetworkProblemState.DroppedPacketBad then
-		NetGraph:AddBar(100, Color3.new(1, 0, 0), 0)
-	end
-	
-	NetGraph:SetFpsText("Ping: " .. math.floor(total) .. "ms")
-	NetGraph:SetOtherFpsText("ServerFps: " .. serverHealthFps)
+    end
+    --teal bar
+    if networkProblem == Enums.NetworkProblemState.CommandUnderrun then
+        NetGraph:AddBar(100, Color3.new(0, 1, 1), 0)
+    end
+
+    --Yellow bar
+    if networkProblem == Enums.NetworkProblemState.DroppedPacketGood then
+        NetGraph:AddBar(100, Color3.new(0.898039, 1, 0), 0)
+    end
+    --Red Bar
+    if networkProblem == Enums.NetworkProblemState.DroppedPacketBad then
+        NetGraph:AddBar(100, Color3.new(1, 0, 0), 0)
+    end
+
+    NetGraph:SetFpsText("Ping: " .. math.floor(total) .. "ms")
+    NetGraph:SetOtherFpsText("ServerFps: " .. serverHealthFps)
 end
 
 function ClientModule.IsConnectionBad(self: Self)
@@ -1088,9 +1091,9 @@ function ClientModule.GenerateCommandBase(self: Self, serverTime: number, deltaT
     local command = {
         deltaTime = deltaTime, -- How much time this command simulated
         serverTime = serverTime, -- For rollback - a locally interpolated value
-        snapshotServerFrame = self.snapshotServerFrame,	-- Confirm to the server the last snapshot we saw
-	    playerStateFrame = chickynoid.lastSeenPlayerStateFrame, -- Confirm to server the last playerState we saw
-		 
+        snapshotServerFrame = self.snapshotServerFrame, -- Confirm to the server the last snapshot we saw
+        playerStateFrame = chickynoid.lastSeenPlayerStateFrame, -- Confirm to server the last playerState we saw
+
         x = 0,
         y = 0,
         z = 0,
@@ -1102,11 +1105,11 @@ function ClientModule.GenerateCommandBase(self: Self, serverTime: number, deltaT
         localFrame = 0,
         fa = Vector3.zero,
     }
- 
+
     local modules = ClientMods:GetMods("clientmods")
 
     for key, mod in modules do
-        if (mod.GenerateCommand) then
+        if mod.GenerateCommand then
             command = mod:GenerateCommand(command, serverTime, deltaTime)
         end
     end

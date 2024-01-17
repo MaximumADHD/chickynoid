@@ -36,53 +36,49 @@ local function GetControlModule()
     return ControlModule
 end
 
-local coreCall do
-	local MAX_RETRIES = 8
+local coreCall
+do
+    local MAX_RETRIES = 8
 
-	local StarterGui = game:GetService('StarterGui')
-	local RunService = game:GetService('RunService')
+    local StarterGui = game:GetService("StarterGui")
+    local RunService = game:GetService("RunService")
 
-	function coreCall(method, ...)
-		local result = {}
-		for retries = 1, MAX_RETRIES do
-			result = {pcall(StarterGui[method], StarterGui, ...)}
-			if result[1] then
-				break
-			end
-			RunService.Stepped:Wait()
-		end
-		return unpack(result)
-	end
+    function coreCall(method, ...)
+        local result = {}
+        for retries = 1, MAX_RETRIES do
+            result = { pcall(StarterGui[method], StarterGui, ...) }
+            if result[1] then
+                break
+            end
+            RunService.Stepped:Wait()
+        end
+        return unpack(result)
+    end
 end
 
 function module:Setup(_client)
-	self.client = _client
-	
-	UserInputService:GetPropertyChangedSignal("MouseBehavior"):Connect(function()
-		if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
-			self.shiftLock = 1
-		 
-		end
-		if UserInputService.MouseBehavior == Enum.MouseBehavior.Default then
-			self.shiftLock = 0
-			 
-		end
-		
-	end)
-	
-	local resetBindable = Instance.new("BindableEvent")
-	resetBindable.Event:connect(function()
-		self.resetRequested = true	
-	end)
-	
-	coreCall('SetCore', 'ResetButtonCallback', resetBindable)
+    self.client = _client
+
+    UserInputService:GetPropertyChangedSignal("MouseBehavior"):Connect(function()
+        if UserInputService.MouseBehavior == Enum.MouseBehavior.LockCenter then
+            self.shiftLock = 1
+        end
+        if UserInputService.MouseBehavior == Enum.MouseBehavior.Default then
+            self.shiftLock = 0
+        end
+    end)
+
+    local resetBindable = Instance.new("BindableEvent")
+    resetBindable.Event:connect(function()
+        self.resetRequested = true
+    end)
+
+    coreCall("SetCore", "ResetButtonCallback", resetBindable)
 end
 
 function module:Step(_client, _deltaTime) end
 
-
 function module:GenerateCommand(command, serverTime: number, dt: number)
-	
     command.x = 0
     command.y = 0
     command.z = 0
@@ -97,69 +93,67 @@ function module:GenerateCommand(command, serverTime: number, dt: number)
             command.z = moveVector.Z
         end
     end
-    
+
     -- This approach isn't ideal but it's the easiest right now
     if not UserInputService:GetFocusedTextBox() then
-
         local jump = UserInputService:IsKeyDown(Enum.KeyCode.Space)
         local crouch = UserInputService:IsKeyDown(Enum.KeyCode.LeftControl)
         command.y = 0
-        if (jump) then
+        if jump then
             command.y = 1
         else
-            if (crouch) then
+            if crouch then
                 command.y = -1
             end
         end
 
         --Fire!
         command.f = UserInputService:IsKeyDown(Enum.KeyCode.Q) and 1 or 0
-		
-		
-		if (self.useInbuiltDebugCheats == true) then		
-	        --Fly?
-	        if UserInputService:IsKeyDown(Enum.KeyCode.F8) then
-	            command.flying = 1
-	        end
 
-	        --Cheat #1 - speed cheat!
-	        if UserInputService:IsKeyDown(Enum.KeyCode.P) then
-	            command.deltaTime *= 3
-	        end
+        if self.useInbuiltDebugCheats == true then
+            --Fly?
+            if UserInputService:IsKeyDown(Enum.KeyCode.F8) then
+                command.flying = 1
+            end
 
-	        --Cheat #2 - suspend!
-	        if UserInputService:IsKeyDown(Enum.KeyCode.L) then
-	            local function test(f)
-	                return f
-	            end
-	            for j = 1, 2000000 do
-	                local a = j * 12
-	                test(a)
-	            end
-			end
-		end
+            --Cheat #1 - speed cheat!
+            if UserInputService:IsKeyDown(Enum.KeyCode.P) then
+                command.deltaTime *= 3
+            end
+
+            --Cheat #2 - suspend!
+            if UserInputService:IsKeyDown(Enum.KeyCode.L) then
+                local function test(f)
+                    return f
+                end
+                for j = 1, 2000000 do
+                    local a = j * 12
+                    test(a)
+                end
+            end
+        end
     end
 
     if self:GetIsJumping() == true then
         command.y = 1
     end
-    
+
     --fire angles
-	command.fa = self:GetAimPoint()
-	
-	--Shiftlock
-	command.shiftLock = self.shiftLock	
-     
+    command.fa = self:GetAimPoint()
+
+    --Shiftlock
+    command.shiftLock = self.shiftLock
+
     --Translate the move vector relative to the camera
     local rawMoveVector = self:CalculateRawMoveVector(Vector3.new(command.x, 0, command.z))
     command.x = rawMoveVector.X
-	command.z = rawMoveVector.Z
-	
-	--reset requested?
-	if self.resetRequested == true then
-		command.reset = true
-		self.resetRequested = false		
-	end
+    command.z = rawMoveVector.Z
+
+    --reset requested?
+    if self.resetRequested == true then
+        command.reset = true
+        self.resetRequested = false
+    end
 
     return command
 end
@@ -182,7 +176,6 @@ function module:GetIsJumping()
         or (ControlModule.touchJumpController and ControlModule.touchJumpController:GetIsJumping())
 end
 
-
 function module:GetAimPoint()
     local mouse = game.Players.LocalPlayer:GetMouse()
     local ray = workspace.CurrentCamera:ScreenPointToRay(mouse.X, mouse.Y)
@@ -192,7 +185,7 @@ function module:GetAimPoint()
 
     local whiteList = { workspace.Terrain }
     local collisionRoot = self.client:GetCollisionRoot()
-    if (collisionRoot) then
+    if collisionRoot then
         table.insert(whiteList, collisionRoot)
     end
     raycastParams.FilterDescendantsInstances = whiteList

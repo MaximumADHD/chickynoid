@@ -18,36 +18,36 @@ function module:ModifySimulation(simulation: Simulation)
         alwaysThink = self.AlwaysThink,
         startState = self.StartState,
     })
-    
-	simulation.constants.flyFriction = 0.2
-	simulation.state.flyingCooldown = 0
+
+    simulation.constants.flyFriction = 0.2
+    simulation.state.flyingCooldown = 0
 end
 
 -- Imagine this is inside Simulation...
 function module.AlwaysThink(simulation: Simulation, cmd: Command)
-	if (simulation.state.flyingCooldown > 0) then
-		simulation.state.flyingCooldown = math.max(simulation.state.flyingCooldown - cmd.deltaTime, 0)
-	end
-	
-	if (simulation.state.flyingCooldown == 0 and cmd.flying == 1) then
-		if (simulation:GetMoveState().name == "Flying") then
-			simulation.state.flyingCooldown = 0.5
-			simulation:SetMoveState("Walking")
-		else
-			simulation.state.flyingCooldown = 0.5
-			simulation:SetMoveState("Flying")
-		end
+    if simulation.state.flyingCooldown > 0 then
+        simulation.state.flyingCooldown = math.max(simulation.state.flyingCooldown - cmd.deltaTime, 0)
+    end
+
+    if simulation.state.flyingCooldown == 0 and cmd.flying == 1 then
+        if simulation:GetMoveState().name == "Flying" then
+            simulation.state.flyingCooldown = 0.5
+            simulation:SetMoveState("Walking")
+        else
+            simulation.state.flyingCooldown = 0.5
+            simulation:SetMoveState("Flying")
+        end
     end
 end
 
 function module.StartState(simulation: Simulation, cmd: Command)
     --pop us up when we enter this state
-    simulation.state.vel = Vector3.new(0,100,0)
+    simulation.state.vel = Vector3.new(0, 100, 0)
 end
 
 --Imagine this is inside Simulation...
 function module.ActiveThink(simulation: Simulation, cmd: Command)
-	--Did the player have a movement request?
+    --Did the player have a movement request?
     local wishDir = nil
 
     if cmd.x ~= 0 or cmd.y ~= 0 or cmd.z ~= 0 then
@@ -56,7 +56,7 @@ function module.ActiveThink(simulation: Simulation, cmd: Command)
     else
         simulation.state.pushDir = Vector2.new(0, 0)
     end
-   
+
     --Does the player have an input?
     if wishDir ~= nil then
         simulation.state.vel = MathUtils:GroundAccelerate(
@@ -67,17 +67,18 @@ function module.ActiveThink(simulation: Simulation, cmd: Command)
             cmd.deltaTime
         )
 
-		simulation.characterData:PlayAnimation("Walk", Enums.AnimChannel.Channel0, false)
+        simulation.characterData:PlayAnimation("Walk", Enums.AnimChannel.Channel0, false)
     else
-		simulation.characterData:PlayAnimation("Idle", Enums.AnimChannel.Channel0, false)
+        simulation.characterData:PlayAnimation("Idle", Enums.AnimChannel.Channel0, false)
     end
 
-    simulation.state.vel = MathUtils:VelocityFriction(simulation.state.vel, simulation.constants.flyFriction, cmd.deltaTime)
+    simulation.state.vel =
+        MathUtils:VelocityFriction(simulation.state.vel, simulation.constants.flyFriction, cmd.deltaTime)
 
     local walkNewPos, walkNewVel = simulation:ProjectVelocity(simulation.state.pos, simulation.state.vel, cmd.deltaTime)
     simulation.state.pos = walkNewPos
     simulation.state.vel = walkNewVel
-    
+
     --Do angles
     if wishDir ~= nil then
         simulation.state.targetAngle = MathUtils:PlayerVecToAngle(wishDir)

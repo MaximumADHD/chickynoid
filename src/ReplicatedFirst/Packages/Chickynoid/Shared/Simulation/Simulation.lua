@@ -24,11 +24,11 @@ type HullData = CollisionModule.HullData
 type Command = CommandLayout.Command
 
 export type State = {
-    name: string, 
-    updateState: (self: Class, cmd: Command) -> ()?, 
+    name: string,
+    updateState: (self: Class, cmd: Command) -> ()?,
     alwaysThink: (self: Class, cmd: Command) -> ()?,
-    startState: (self: Class, prevState: string) -> ()?, 
-    endState: (self: Class, nextState: string) -> ()?, 
+    startState: (self: Class, prevState: string) -> ()?,
+    endState: (self: Class, nextState: string) -> ()?,
     alwaysThinkLate: (self: Class, cmd: Command) -> ()?,
     executionOrder: number?,
 }
@@ -72,30 +72,33 @@ export type StateRecord = {
     constants: SimConsts,
 }
 
-export type Class = typeof(setmetatable({} :: {
-    userId: number,
-    moveStates: {State},
-    executionOrder: {State},
+export type Class = typeof(setmetatable(
+    {} :: {
+        userId: number,
+        moveStates: { State },
+        executionOrder: { State },
 
-    moveStateNames: {
-        [string]: number
+        moveStateNames: {
+            [string]: number,
+        },
+
+        state: SimState,
+        constants: SimConsts,
+
+        characterData: CharacterData,
+        lastGround: HullData?,
+        debugModel: Model?,
     },
-
-    state: SimState,
-    constants: SimConsts,
-
-    characterData: CharacterData,
-    lastGround: HullData?,
-    debugModel: Model?,
-}, Simulation))
+    Simulation
+))
 
 function Simulation.new(userId: number): Class
     local self = setmetatable({}, Simulation)
     self.userId = userId
 
     self.moveStates = {}
-	self.moveStateNames = {}
-	self.executionOrder = {}
+    self.moveStateNames = {}
+    self.executionOrder = {}
 
     self.state = {}
 
@@ -127,13 +130,13 @@ function Simulation.new(userId: number): Class
     self.constants.runFriction = 0.01 --friction applied after max speed
     self.constants.brakeFriction = 0.02 --Lower is brake harder, dont use 0
     self.constants.maxGroundSlope = 0.05 --about 89o
-    self.constants.jumpThrustPower = 0    --No variable height jumping 
+    self.constants.jumpThrustPower = 0 --No variable height jumping
     self.constants.jumpThrustDecay = 0
-	self.constants.gravity = -198
-	self.constants.crashLandBehavior = Enums.Crashland.FULL_BHOP_FORWARD
+    self.constants.gravity = -198
+    self.constants.crashLandBehavior = Enums.Crashland.FULL_BHOP_FORWARD
 
     self.constants.pushSpeed = 16 --set this lower than maxspeed if you want stuff to feel heavy
-	self.constants.stepSize = 2.2	--How high you can step over something
+    self.constants.stepSize = 2.2 --How high you can step over something
 
     self:RegisterMoveState({
         name = "Walking",
@@ -158,16 +161,16 @@ function Simulation.RegisterMoveState(self: Class, moveState: State)
 
     local name = moveState.name
     self.moveStateNames[name] = index
-	self.moveStates[index] = moveState
-	self.executionOrder = {}
+    self.moveStates[index] = moveState
+    self.executionOrder = {}
 
-	for key, value in self.moveStates do
-		table.insert(self.executionOrder, value)
-	end
-	
-	table.sort(self.executionOrder, function(a, b)
-		return (a.executionOrder or 0) < (b.executionOrder or 0)
-	end)
+    for key, value in self.moveStates do
+        table.insert(self.executionOrder, value)
+    end
+
+    table.sort(self.executionOrder, function(a, b)
+        return (a.executionOrder or 0) < (b.executionOrder or 0)
+    end)
 end
 
 function Simulation.SetMoveState(self: Class, name: string)
@@ -177,12 +180,12 @@ function Simulation.SetMoveState(self: Class, name: string)
     if record then
         local prevRecord = self.moveStates[self.state.moveState]
 
-        if (prevRecord and prevRecord.endState) then
+        if prevRecord and prevRecord.endState then
             prevRecord.endState(self, name)
         end
 
-        if (record.startState) then
-            if (prevRecord) then
+        if record.startState then
+            if prevRecord then
                 record.startState(self, prevRecord.name)
             else
                 record.startState(self, "")
@@ -193,33 +196,32 @@ function Simulation.SetMoveState(self: Class, name: string)
     end
 end
 
-
 --	It is very important that this method rely only on whats in the cmd object
 --	and no other client or server state can "leak" into here
 --	or the server and client state will get out of sync.
 
 function Simulation.ProcessCommand(self: Class, cmd: Command)
     --debug.profilebegin("Chickynoid Simulation")
-	for key, record in self.executionOrder do
-        if (record.alwaysThink) then
+    for key, record in self.executionOrder do
+        if record.alwaysThink then
             record.alwaysThink(self, cmd)
         end
     end
 
     local currentRecord = self.moveStates[self.state.moveState]
 
-    if (currentRecord and currentRecord.updateState) then
+    if currentRecord and currentRecord.updateState then
         currentRecord.updateState(self, cmd)
     else
         warn("No such updateState: ", self.state.moveState)
     end
-	
-	for key, record in self.executionOrder do
-		if (record.alwaysThinkLate) then
-			record.alwaysThinkLate(self, cmd)
-		end
-	end
-  
+
+    for key, record in self.executionOrder do
+        if record.alwaysThinkLate then
+            record.alwaysThinkLate(self, cmd)
+        end
+    end
+
     --Input/Movement is done, do the update of timers and write out values
 
     --Adjust stepup
@@ -240,7 +242,7 @@ function Simulation.ProcessCommand(self: Class, cmd: Command)
     self.characterData:SetTargetPosition(self.state.pos)
     self.characterData:SetAngle(self.state.angle)
     self.characterData:SetStepUp(self.state.stepUp)
-    self.characterData:SetFlatSpeed( MathUtils:FlatVec(self.state.vel).Magnitude)
+    self.characterData:SetFlatSpeed(MathUtils:FlatVec(self.state.vel).Magnitude)
 
     --debug.profileend()
 end
@@ -260,45 +262,44 @@ function Simulation.SetPosition(self: Class, position: Vector3, teleport: boolea
 end
 
 function Simulation.CrashLand(self: Class, vel: Vector3, ground: HullData)
-	if (self.constants.crashLandBehavior == Enums.Crashland.FULL_BHOP) then
+    if self.constants.crashLandBehavior == Enums.Crashland.FULL_BHOP then
         return MathUtils:FlatVec(vel)
-	end
-	
-	if (self.constants.crashLandBehavior == Enums.Crashland.CAPPED_BHOP) then
-		--cap velocity
-		local returnVel = MathUtils:FlatVec(vel)
-		return MathUtils:CapVelocity(returnVel, self.constants.maxSpeed)
-	end
-	
-	if (self.constants.crashLandBehavior == Enums.Crashland.CAPPED_BHOP_FORWARD) then
+    end
+
+    if self.constants.crashLandBehavior == Enums.Crashland.CAPPED_BHOP then
+        --cap velocity
+        local returnVel = MathUtils:FlatVec(vel)
+        return MathUtils:CapVelocity(returnVel, self.constants.maxSpeed)
+    end
+
+    if self.constants.crashLandBehavior == Enums.Crashland.CAPPED_BHOP_FORWARD then
         local flat = MathUtils:FlatVec(ground.normal).Unit
-		local forward = MathUtils:PlayerAngleToVec(self.state.angle)
-		
-		if (forward:Dot(flat) < 0) then --bhop forward if the slope is the way we're facing
-			local returnVel = MathUtils:FlatVec(vel)
-			return MathUtils:CapVelocity(returnVel, self.constants.maxSpeed)
-		end
+        local forward = MathUtils:PlayerAngleToVec(self.state.angle)
 
-		--else stop
-		return Vector3.zero
-	end
-	
-	if (self.constants.crashLandBehavior == Enums.Crashland.FULL_BHOP_FORWARD) then
-		local flat = MathUtils:FlatVec(ground.normal).Unit
-		local forward = MathUtils:PlayerAngleToVec(self.state.angle)
+        if forward:Dot(flat) < 0 then --bhop forward if the slope is the way we're facing
+            local returnVel = MathUtils:FlatVec(vel)
+            return MathUtils:CapVelocity(returnVel, self.constants.maxSpeed)
+        end
 
-		if (forward:Dot(flat) < 0) then --bhop forward if the slope is the way we're facing
-			return vel
-		end
+        --else stop
+        return Vector3.zero
+    end
 
-		--else stop
-		return Vector3.zero
-	end
-	
+    if self.constants.crashLandBehavior == Enums.Crashland.FULL_BHOP_FORWARD then
+        local flat = MathUtils:FlatVec(ground.normal).Unit
+        local forward = MathUtils:PlayerAngleToVec(self.state.angle)
+
+        if forward:Dot(flat) < 0 then --bhop forward if the slope is the way we're facing
+            return vel
+        end
+
+        --else stop
+        return Vector3.zero
+    end
+
     --stop
-	return Vector3.zero
+    return Vector3.zero
 end
-
 
 --STEPUP - the magic that lets us traverse uneven world geometry
 --the idea is that you redo the player movement but "if I was x units higher in the air"
@@ -423,7 +424,7 @@ function Simulation.ProjectVelocity(self: Class, startPos: Vector3, startVel: Ve
 
         if moveVel:Dot(startVel) < 0 then
             --we projected back in the opposite direction from where we started. No.
-			moveVel = Vector3.new(0, 0, 0)
+            moveVel = Vector3.new(0, 0, 0)
             break
         end
 
@@ -471,38 +472,37 @@ function Simulation.ProjectVelocity(self: Class, startPos: Vector3, startVel: Ve
 end
 
 function Simulation.CheckGroundSlopes(self: Class, startPos: Vector3)
-	local movePos = startPos
-	local moveDir = -Vector3.yAxis
-	
-	--We only operate on a scaled down version of velocity
-	local result = CollisionModule:Sweep(movePos, movePos + moveDir)
+    local movePos = startPos
+    local moveDir = -Vector3.yAxis
 
-	--Update our position
-	if result.fraction > 0 then
-		movePos = result.endPos
-	end
-	--See if we swept the whole way?
-	if result.fraction == 1 then
-		return false
-	end
-	
-	if result.allSolid == true then
-		return true --stuck
-	end
-	
-	moveDir = MathUtils:ClipVelocity(moveDir, result.normal, 1.0)
+    --We only operate on a scaled down version of velocity
+    local result = CollisionModule:Sweep(movePos, movePos + moveDir)
 
-	if (moveDir.Magnitude < 0.001) then
-		return true --stuck
-	end
-	
-	--Try and move it
-	result = CollisionModule:Sweep(movePos, movePos + moveDir)
+    --Update our position
+    if result.fraction > 0 then
+        movePos = result.endPos
+    end
+    --See if we swept the whole way?
+    if result.fraction == 1 then
+        return false
+    end
+
+    if result.allSolid == true then
+        return true --stuck
+    end
+
+    moveDir = MathUtils:ClipVelocity(moveDir, result.normal, 1.0)
+
+    if moveDir.Magnitude < 0.001 then
+        return true --stuck
+    end
+
+    --Try and move it
+    result = CollisionModule:Sweep(movePos, movePos + moveDir)
 
     -- Return true if we didn't move
     return result.fraction == 0
 end
-
 
 --This gets deltacompressed by the client/server chickynoids automatically
 function Simulation.WriteState(self: Class): StateRecord
@@ -564,41 +564,36 @@ function Simulation.GetStandingPart(self: Class)
     return nil
 end
 
-
 --Move me to my own file!
 function Simulation.MovetypeWalking(self: Class, cmd)
-
     --Check ground
     local onGround = nil
     onGround = self:DoGroundCheck(self.state.pos)
 
     --If the player is on too steep a slope, its not ground
-	if (onGround ~= nil and onGround.normal.Y < self.constants.maxGroundSlope) then
-		
-		--See if we can move downwards?
-		if (self.state.vel.Y < 0.1) then
-			local stuck = self:CheckGroundSlopes(self.state.pos)
-			
-			if (stuck == false) then
-				--we moved, that means the player is on a slope and can free fall
-				onGround = nil
-			else
-				--we didn't move, it means the ground we're on is sloped, but we can't fall any further
-				--treat it like flat ground
-				onGround.normal = Vector3.new(0,1,0)
-			end
-		else
-			onGround = nil
-		end
-	end
-	
-	 
+    if onGround ~= nil and onGround.normal.Y < self.constants.maxGroundSlope then
+        --See if we can move downwards?
+        if self.state.vel.Y < 0.1 then
+            local stuck = self:CheckGroundSlopes(self.state.pos)
+
+            if stuck == false then
+                --we moved, that means the player is on a slope and can free fall
+                onGround = nil
+            else
+                --we didn't move, it means the ground we're on is sloped, but we can't fall any further
+                --treat it like flat ground
+                onGround.normal = Vector3.new(0, 1, 0)
+            end
+        else
+            onGround = nil
+        end
+    end
+
     --Mark if we were onground at the start of the frame
     local startedOnGround = onGround
-	
-	--Simplify - whatever we are at the start of the frame goes.
-	self.lastGround = onGround
-	
+
+    --Simplify - whatever we are at the start of the frame goes.
+    self.lastGround = onGround
 
     --Did the player have a movement request?
     local wishDir: Vector3?
@@ -631,11 +626,12 @@ function Simulation.MovetypeWalking(self: Class, cmd)
             if self.state.pushing > 0 then
                 self.characterData:PlayAnimation("Push", Enums.AnimChannel.Channel0, false)
             else
-				self.characterData:PlayAnimation("Walk", Enums.AnimChannel.Channel0, false)
+                self.characterData:PlayAnimation("Walk", Enums.AnimChannel.Channel0, false)
             end
         else
             --Moving through the air under player control
-            flatVel = MathUtils:Accelerate(wishDir, self.constants.airSpeed, self.constants.airAccel, flatVel, cmd.deltaTime)
+            flatVel =
+                MathUtils:Accelerate(wishDir, self.constants.airSpeed, self.constants.airAccel, flatVel, cmd.deltaTime)
         end
     else
         if onGround ~= nil then
@@ -643,8 +639,8 @@ function Simulation.MovetypeWalking(self: Class, cmd)
             flatVel = MathUtils:VelocityFriction(flatVel, self.constants.brakeFriction, cmd.deltaTime)
 
             --Enter idle
-			self.characterData:PlayAnimation("Idle", Enums.AnimChannel.Channel0, false)
-        -- else
+            self.characterData:PlayAnimation("Idle", Enums.AnimChannel.Channel0, false)
+            -- else
             --moving through the air with no input
         end
     end
@@ -666,9 +662,8 @@ function Simulation.MovetypeWalking(self: Class, cmd)
             self.state.vel = Vector3.new(self.state.vel.X, self.constants.jumpPunch, self.state.vel.Z)
             self.state.jump = 0.2 --jumping has a cooldown (think jumping up a staircase)
             self.state.jumpThrust = self.constants.jumpThrustPower
-			self.characterData:PlayAnimation("Jump", Enums.AnimChannel.Channel0, true, 0.2)
+            self.characterData:PlayAnimation("Jump", Enums.AnimChannel.Channel0, true, 0.2)
         end
-
     end
 
     --In air?
@@ -683,11 +678,8 @@ function Simulation.MovetypeWalking(self: Class, cmd)
         if cmd.y > 0 then
             if self.state.jumpThrust > 0 then
                 self.state.vel += Vector3.new(0, self.state.jumpThrust * cmd.deltaTime, 0)
-                self.state.jumpThrust = MathUtils:Friction(
-                    self.state.jumpThrust,
-                    self.constants.jumpThrustDecay,
-                    cmd.deltaTime
-                )
+                self.state.jumpThrust =
+                    MathUtils:Friction(self.state.jumpThrust, self.constants.jumpThrustDecay, cmd.deltaTime)
             end
             if self.state.jumpThrust < 0.001 then
                 self.state.jumpThrust = 0
@@ -701,7 +693,7 @@ function Simulation.MovetypeWalking(self: Class, cmd)
 
         --Switch to falling if we've been off the ground for a bit
         if self.state.vel.Y <= 0.01 and self.state.inAir > 0.5 then
-			self.characterData:PlayAnimation("Fall", Enums.AnimChannel.Channel0, false)
+            self.characterData:PlayAnimation("Fall", Enums.AnimChannel.Channel0, false)
         end
     else
         self.state.inAir = 0
@@ -718,11 +710,10 @@ function Simulation.MovetypeWalking(self: Class, cmd)
 
         if groundCheck ~= nil then
             --Crashland
-			walkNewVel = self:CrashLand(walkNewVel, groundCheck)
+            walkNewVel = self:CrashLand(walkNewVel, groundCheck)
         end
     end
 
-	
     -- Do we attempt a stepup?                              (not jumping!)
     if onGround ~= nil and hitSomething == true and self.state.jump == 0 then
         stepUpResult = self:DoStepUp(self.state.pos, self.state.vel, cmd.deltaTime)
@@ -749,19 +740,19 @@ function Simulation.MovetypeWalking(self: Class, cmd)
         end
     end
 
-	--Do angles
-	if (cmd.shiftLock == 1) then
-        if (cmd.fa) then
+    --Do angles
+    if cmd.shiftLock == 1 then
+        if cmd.fa then
             local vec = cmd.fa - self.state.pos
 
-			self.state.targetAngle  = MathUtils:PlayerVecToAngle(vec)
-			self.state.angle = MathUtils:LerpAngle(
-				self.state.angle,
-				self.state.targetAngle,
-				self.constants.turnSpeedFrac * cmd.deltaTime
-			)
+            self.state.targetAngle = MathUtils:PlayerVecToAngle(vec)
+            self.state.angle = MathUtils:LerpAngle(
+                self.state.angle,
+                self.state.targetAngle,
+                self.constants.turnSpeedFrac * cmd.deltaTime
+            )
         end
-    else    
+    else
         if wishDir ~= nil then
             self.state.targetAngle = MathUtils:PlayerVecToAngle(wishDir)
             self.state.angle = MathUtils:LerpAngle(
@@ -770,7 +761,7 @@ function Simulation.MovetypeWalking(self: Class, cmd)
                 self.constants.turnSpeedFrac * cmd.deltaTime
             )
         end
-	end
+    end
 end
 
 return Simulation

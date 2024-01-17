@@ -22,7 +22,7 @@ function module:Step(server, _deltaTime)
         if part then
             if part:GetAttribute("kill") == true then
                 --kill!
-                local HitPoints = ServerMods:GetMod("servermods","Hitpoints")
+                local HitPoints = ServerMods:GetMod("servermods", "Hitpoints")
                 if HitPoints then
                     HitPoints:SetPlayerHitPoints(playerRecord, 0)
                 end

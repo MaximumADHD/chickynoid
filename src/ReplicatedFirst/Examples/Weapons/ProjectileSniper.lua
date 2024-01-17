@@ -8,28 +8,26 @@ local WriteBuffer = require(path.Shared.Vendor.WriteBuffer)
 local ReadBuffer = require(path.Shared.Vendor.ReadBuffer)
 local Enums = require(path.Shared.Enums)
 
-
 local isServer = false
-if (game:GetService("RunService"):IsServer()) then
+if game:GetService("RunService"):IsServer() then
     isServer = true
 end
 local ServerFastProjectiles = nil
 local ClientFastProjectiles = nil
 local ServerMods = nil
-if (isServer) then
-	ServerFastProjectiles = require(game.ServerScriptService.Examples.ServerMods.ServerFastProjectiles)
-	ServerMods = require(game.ServerScriptService.Packages.Chickynoid.Server.ServerMods)
+if isServer then
+    ServerFastProjectiles = require(game.ServerScriptService.Examples.ServerMods.ServerFastProjectiles)
+    ServerMods = require(game.ServerScriptService.Packages.Chickynoid.Server.ServerMods)
 end
-if (isServer ~= true) then
+if isServer ~= true then
     ClientFastProjectiles = require(game.ReplicatedFirst.Examples.ClientMods.ClientFastProjectiles)
 end
 
-
 function ProjectileSniper.new()
     local self = setmetatable({
-		rateOfFire = 0.5,
-		bulletDrop = -0.2,
-		bulletSpeed = 600, 
+        rateOfFire = 0.5,
+        bulletDrop = -0.2,
+        bulletSpeed = 600,
         bulletMaxDistance = 600,
         serial = nil,
         name = nil,
@@ -80,7 +78,14 @@ function ProjectileSniper:ClientProcessCommand(command)
                 local clone = EffectsModule:SpawnEffect("Tracer", origin + vec * 2)
                 clone.CFrame = CFrame.lookAt(origin, origin + vec)
 
-                local bulletRecord = ClientFastProjectiles:FireBullet(origin, vec, self.bulletSpeed, self.bulletMaxDistance, self.bulletDrop, -1)
+                local bulletRecord = ClientFastProjectiles:FireBullet(
+                    origin,
+                    vec,
+                    self.bulletSpeed,
+                    self.bulletMaxDistance,
+                    self.bulletDrop,
+                    -1
+                )
 
                 --on the client, do an approximate collision check for our own bullets (not *required* but its here for completeness)
                 bulletRecord.DoCollisionCheck = function(record, old, new)
@@ -95,9 +100,9 @@ function ProjectileSniper:DoClientBulletCheck(_bulletRecord, old, new)
     local ray = RaycastParams.new()
     ray.FilterType = Enum.RaycastFilterType.Include
     ray.FilterDescendantsInstances = { workspace.GameArea }
-    local vec = (new-old)
+    local vec = (new - old)
     local results = workspace:Raycast(old, vec, ray)
-    if (results ~= nil) then
+    if results ~= nil then
         return results
     end
     return nil
@@ -111,10 +116,9 @@ function ProjectileSniper:ClientDequip() end
 
 --Warning! - you might not have this weapon locally
 --This is far more akin to a static method, and is provided so you can render client effects
-function ProjectileSniper:ClientOnBulletImpact(_client, event) 
-
-   --WeaponModule
-   if event.normal then
+function ProjectileSniper:ClientOnBulletImpact(_client, event)
+    --WeaponModule
+    if event.normal then
         if event.surface == 0 then
             local effect = EffectsModule:SpawnEffect("ImpactWorld", event.position)
             local cframe = CFrame.lookAt(event.position, event.position + event.normal)
@@ -127,23 +131,25 @@ function ProjectileSniper:ClientOnBulletImpact(_client, event)
         end
     end
     ClientFastProjectiles:TerminateBullet(event.bulletId)
-
 end
 
-
-function ProjectileSniper:ClientOnBulletFire(_client, event) 
+function ProjectileSniper:ClientOnBulletFire(_client, event)
     --Fired a bullet
 
-    if (event.player.userId ~= game.Players.LocalPlayer.UserId) then
+    if event.player.userId ~= game.Players.LocalPlayer.UserId then
         local clone = EffectsModule:SpawnEffect("Tracer", event.origin + event.vec * 2)
         clone.CFrame = CFrame.lookAt(event.origin, event.origin + event.vec)
-        
-        ClientFastProjectiles:FireBullet(event.origin, event.vec, event.speed, event.maxDistance, event.drop, event.bulletId)
+
+        ClientFastProjectiles:FireBullet(
+            event.origin,
+            event.vec,
+            event.speed,
+            event.maxDistance,
+            event.drop,
+            event.bulletId
+        )
     end
-
-    
 end
-
 
 function ProjectileSniper:ServerSetup()
     self.state.maxAmmo = 10
@@ -178,23 +184,23 @@ function ProjectileSniper:ServerProcessCommand(command)
             state.nextFire = currentTime + state.fireDelay
 
             self.timeOfLastShot = currentTime
- 
+
             local serverChickynoid = self.playerRecord.chickynoid
             if serverChickynoid then
                 local origin = serverChickynoid.simulation.state.pos
                 local dest = command.fa
                 local vec = (dest - origin).Unit
-              
+
                 local speed = self.bulletSpeed
                 local maxDistance = self.bulletMaxDistance
                 local drop = self.bulletDrop -- units per second
-                
 
                 local raycastParams = nil
 
                 --Make the thing that does the thing
-                local bulletRecord = ServerFastProjectiles:FireBullet(origin, vec, speed, maxDistance, drop, command.serverTime)
-                
+                local bulletRecord =
+                    ServerFastProjectiles:FireBullet(origin, vec, speed, maxDistance, drop, command.serverTime)
+
                 bulletRecord.DoCollisionCheck = function(bulletRecord, old, new)
                     --Math to do the collision check
                     local vec = (new - old).Unit
@@ -206,38 +212,42 @@ function ProjectileSniper:ServerProcessCommand(command)
                         vec,
                         bulletRecord.serverTime,
                         nil,
-                        raycastParams, 
+                        raycastParams,
                         range
                     )
-             
-                    if (normal ~= nil) then --hit something
-                    
+
+                    if normal ~= nil then --hit something
                         local surface = 0 --Surface type
                         if otherPlayer then
                             surface = 1 --(blood!)
-                        end          
+                        end
                         bulletRecord.die = true
                         bulletRecord.surface = surface
                         bulletRecord.position = pos
                         bulletRecord.normal = normal
-						bulletRecord.otherPlayer = otherPlayer
+                        bulletRecord.otherPlayer = otherPlayer
                     end
                 end
                 bulletRecord.OnBulletDie = function(bulletRecord)
                     local event = {}
                     event.t = Enums.EventType.BulletImpact
-                    event.b = self:BuildImpactPacketString(bulletRecord.position, bulletRecord.normal, bulletRecord.surface, bulletRecord.bulletId)
-					
-					self.playerRecord:SendEventToClients(event)
-					
-					--Do the damage
-					if bulletRecord.otherPlayer then
-						--Use the hitpoints mod to damage them!
-						local HitPoints = ServerMods:GetMod("servermods", "Hitpoints")
-						if HitPoints then
-							HitPoints:DamagePlayer(bulletRecord.otherPlayer, 50)
-						end
-					end
+                    event.b = self:BuildImpactPacketString(
+                        bulletRecord.position,
+                        bulletRecord.normal,
+                        bulletRecord.surface,
+                        bulletRecord.bulletId
+                    )
+
+                    self.playerRecord:SendEventToClients(event)
+
+                    --Do the damage
+                    if bulletRecord.otherPlayer then
+                        --Use the hitpoints mod to damage them!
+                        local HitPoints = ServerMods:GetMod("servermods", "Hitpoints")
+                        if HitPoints then
+                            HitPoints:DamagePlayer(bulletRecord.otherPlayer, 50)
+                        end
+                    end
                 end
 
                 --Send an event to render this firing
@@ -253,20 +263,18 @@ end
 
 function ProjectileSniper:BuildImpactPacketString(position, normal, surface, bulletId)
     local buf = WriteBuffer.new()
-    
+
     --these two first always
     buf:WriteI16(self.weaponId)
-	buf:WriteU8(self.playerRecord.slot)
-    
-    
+    buf:WriteU8(self.playerRecord.slot)
+
     buf:WriteVector3(position)
     buf:WriteI16(bulletId)
 
-
-    if (normal) then
+    if normal then
         buf:WriteU8(1)
-		buf:WriteVector3(normal)
-		buf:WriteU8(surface)
+        buf:WriteVector3(normal)
+        buf:WriteU8(surface)
     else
         buf:WriteU8(0)
     end
@@ -275,60 +283,55 @@ end
 
 function ProjectileSniper:BuildFirePacketString(origin, vec, speed, maxDistance, drop, bulletId)
     local buf = WriteBuffer.new()
-    
-	--these two first always
-	buf:WriteI16(self.weaponId)
-	buf:WriteU8(self.playerRecord.slot)
-    
-	buf:WriteVector3(origin)
-	buf:WriteVector3(vec)
-	buf:WriteFloat16(speed)
-	buf:WriteFloat16(maxDistance)
-	buf:WriteFloat16(drop)
-	buf:WriteI16(bulletId)
-    
+
+    --these two first always
+    buf:WriteI16(self.weaponId)
+    buf:WriteU8(self.playerRecord.slot)
+
+    buf:WriteVector3(origin)
+    buf:WriteVector3(vec)
+    buf:WriteFloat16(speed)
+    buf:WriteFloat16(maxDistance)
+    buf:WriteFloat16(drop)
+    buf:WriteI16(bulletId)
+
     return buf:GetBuffer()
 end
 
 function ProjectileSniper:UnpackPacket(event)
+    if event.t == Enums.EventType.BulletImpact then
+        local buf = ReadBuffer.new(event.b)
 
-    if (event.t == Enums.EventType.BulletImpact) then
-		
-		local buf = ReadBuffer.new(event.b)
-        
         --these two first always
-		event.weaponID = buf:ReadI16()
-		event.slot = buf:ReadU8()
+        event.weaponID = buf:ReadI16()
+        event.slot = buf:ReadU8()
 
-		event.position = buf:ReadVector3()
-		event.bulletId = buf:ReadI16()
-      
+        event.position = buf:ReadVector3()
+        event.bulletId = buf:ReadI16()
 
-		local hasNormal = buf:ReadU8()
-        if (hasNormal > 0) then
-			event.normal = buf:ReadVector3()
-			event.surface = buf:ReadU8()
+        local hasNormal = buf:ReadU8()
+        if hasNormal > 0 then
+            event.normal = buf:ReadVector3()
+            event.surface = buf:ReadU8()
         end
 
         return event
-    elseif (event.t == Enums.EventType.BulletFire) then
-		local buf = ReadBuffer.new(event.b)
-        
+    elseif event.t == Enums.EventType.BulletFire then
+        local buf = ReadBuffer.new(event.b)
+
         --these two first always
         event.weaponID = buf:ReadI16()
-		event.slot = buf:ReadU8()
-        
-		event.origin = buf:ReadVector3()
-		event.vec = buf:ReadVector3()
-		event.speed = buf:ReadFloat16()
-		event.maxDistance = buf:ReadFloat16()
-		event.drop = buf:ReadFloat16()
-		event.bulletId = buf:ReadI16()
+        event.slot = buf:ReadU8()
+
+        event.origin = buf:ReadVector3()
+        event.vec = buf:ReadVector3()
+        event.speed = buf:ReadFloat16()
+        event.maxDistance = buf:ReadFloat16()
+        event.drop = buf:ReadFloat16()
+        event.bulletId = buf:ReadI16()
         return event
     end
 end
-
- 
 
 function ProjectileSniper:ServerEquip() end
 
@@ -337,6 +340,5 @@ function ProjectileSniper:ServerDequip() end
 function ProjectileSniper:ClientRemoved() end
 
 function ProjectileSniper:ServerRemoved() end
-
 
 return ProjectileSniper

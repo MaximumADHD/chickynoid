@@ -13,12 +13,12 @@ type PlayerRecord = ServerChickynoid.PlayerRecord
 type Self = typeof(module)
 
 type IServer = {
-    GetPlayers: (...any) -> {PlayerRecord},
+    GetPlayers: (...any) -> { PlayerRecord },
 
     flags: {
         DEBUG_ANTILAG: boolean,
         [any]: any,
-    }
+    },
 }
 
 function module.Setup(server: IServer)
@@ -134,7 +134,7 @@ function module.PushPlayerPositionsToTime(self: Self, playerRecord: PlayerRecord
 end
 
 function module.Pop(self: Self)
-    local players: {PlayerRecord} = self.server:GetPlayers()
+    local players: { PlayerRecord } = self.server:GetPlayers()
 
     for userId, pos in pairs(self.temporaryPositions) do
         local playerRecord = players[userId]

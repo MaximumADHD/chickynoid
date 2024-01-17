@@ -5,7 +5,7 @@ local path = game.ReplicatedFirst.Packages.Chickynoid
 local EffectsModule = require(path.Client.Effects)
 local WriteBuffer = require(path.Shared.Vendor.WriteBuffer)
 local ReadBuffer = require(path.Shared.Vendor.ReadBuffer)
-local ServerMods = nil 
+local ServerMods = nil
 local Enums = require(path.Shared.Enums)
 
 function MachineGunModule.new()
@@ -49,7 +49,7 @@ function MachineGunModule:ClientProcessCommand(command)
             state.nextFire = currentTime + state.fireDelay
             self:SetPredictedState() --Flag that we predicted the state, this will stop the server value from overriding it for a moment (eg: firing rapidly)
 
-            self.client:DebugMarkAllPlayers(tostring(state.ammo+1))
+            self.client:DebugMarkAllPlayers(tostring(state.ammo + 1))
 
             local clientChickynoid = self.client:GetClientChickynoid()
             if clientChickynoid then
@@ -74,8 +74,7 @@ function MachineGunModule:ClientDequip() end
 
 --Warning! - you might not have this weapon locally
 --This is far more akin to a static method, and is provided so you can render client effects
-function MachineGunModule:ClientOnBulletImpact(_client, event) 
-    
+function MachineGunModule:ClientOnBulletImpact(_client, event)
     --WeaponModule
     if event.normal then
         if event.surface == 0 then
@@ -134,7 +133,7 @@ function MachineGunModule:ServerProcessCommand(command)
 
             self.timeOfLastShot = currentTime
 
-            local debugText = tostring(state.ammo+1)
+            local debugText = tostring(state.ammo + 1)
 
             local serverChickynoid = self.playerRecord.chickynoid
             if serverChickynoid then
@@ -163,12 +162,12 @@ function MachineGunModule:ServerProcessCommand(command)
 
                 --Do the damage
                 if otherPlayer then
-					--Use the hitpoints mod to damage them!
-					
-					if (ServerMods == nil) then
-						ServerMods = require(game.ServerScriptService.Packages.Chickynoid.Server.ServerMods)
-					end
-					
+                    --Use the hitpoints mod to damage them!
+
+                    if ServerMods == nil then
+                        ServerMods = require(game.ServerScriptService.Packages.Chickynoid.Server.ServerMods)
+                    end
+
                     local HitPoints = ServerMods:GetMod("servermods", "Hitpoints")
                     if HitPoints then
                         HitPoints:DamagePlayer(otherPlayer, 10)
@@ -179,50 +178,45 @@ function MachineGunModule:ServerProcessCommand(command)
     end
 end
 
-
 function MachineGunModule:BuildPacketString(origin, position, normal, surface)
-	
-	local buf = WriteBuffer.new()
-    
-    --these two first always
-	buf:WriteI16(self.weaponId)
-	buf:WriteU8(self.playerRecord.slot)
-		
-	buf:WriteVector3(origin)
-	buf:WriteVector3(position)
-	buf:WriteU8(surface)
+    local buf = WriteBuffer.new()
 
-    if (normal) then
-		buf:WriteU8(1)
-		buf:WriteVector3(normal)
+    --these two first always
+    buf:WriteI16(self.weaponId)
+    buf:WriteU8(self.playerRecord.slot)
+
+    buf:WriteVector3(origin)
+    buf:WriteVector3(position)
+    buf:WriteU8(surface)
+
+    if normal then
+        buf:WriteU8(1)
+        buf:WriteVector3(normal)
     else
-		buf:WriteU8(0)
-	end	
-							
-	return buf:GetBuffer()
+        buf:WriteU8(0)
+    end
+
+    return buf:GetBuffer()
 end
 
 function MachineGunModule:UnpackPacket(event)
+    local buf = ReadBuffer.new(event.b)
 
-	local buf = ReadBuffer.new(event.b)
-	
     --these two first always
-	event.weaponID = buf:ReadI16()
-	event.slot = buf:ReadU8()
+    event.weaponID = buf:ReadI16()
+    event.slot = buf:ReadU8()
 
-	event.origin = buf:ReadVector3()
-	event.position = buf:ReadVector3()
-	event.surface = buf:ReadU8()
+    event.origin = buf:ReadVector3()
+    event.position = buf:ReadVector3()
+    event.surface = buf:ReadU8()
 
-	local hasNormal = buf:ReadU8()
-    if (hasNormal > 0) then
-		event.normal = buf:ReadVector3()
+    local hasNormal = buf:ReadU8()
+    if hasNormal > 0 then
+        event.normal = buf:ReadVector3()
     end
 
     return event
 end
-
- 
 
 function MachineGunModule:ServerEquip() end
 
@@ -231,6 +225,5 @@ function MachineGunModule:ServerDequip() end
 function MachineGunModule:ClientRemoved() end
 
 function MachineGunModule:ServerRemoved() end
-
 
 return MachineGunModule

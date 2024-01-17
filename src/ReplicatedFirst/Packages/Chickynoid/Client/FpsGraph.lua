@@ -1,15 +1,15 @@
 --!native
 local module = {}
 module.ui = nil
-module.fpsColor = Color3.new(0,1,0)
+module.fpsColor = Color3.new(0, 1, 0)
 
 function module:SetFpsColor(color)
-	module.fpsColor = color
+    module.fpsColor = color
 end
 
 function module:AddPoint(y, color, layer)
     self:GetGui()
-		
+
     if module.ui == nil then
         return
     end
@@ -41,7 +41,6 @@ function module:AddPoint(y, color, layer)
     end
 end
 
- 
 function module:AddBar(y, color, layer)
     self:GetGui()
 
@@ -65,17 +64,16 @@ function module:AddBar(y, color, layer)
     child.BorderSizePixel = 0
     child.Size = UDim2.new(0, 1, 0, math.floor(y))
     child.Position = UDim2.new(0, points.AbsoluteSize.x - 1, 0, points.AbsoluteSize.y - math.floor(y))
-	child.ZIndex = layer
-	child.BackgroundTransparency = 0.5
-	child.Name = "Bar"
-	
-    
+    child.ZIndex = layer
+    child.BackgroundTransparency = 0.5
+    child.Name = "Bar"
+
     if color == nil then
         child.BackgroundColor3 = Color3.new(0, 0, 0)
     else
         child.BackgroundColor3 = color
-	end
-	child.Parent = points
+    end
+    child.Parent = points
 end
 
 function module:SetWarning(warningText)

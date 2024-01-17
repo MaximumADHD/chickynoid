@@ -3,11 +3,11 @@
 local module = {}
 
 export type LazyTable = {
-    [any]: any
+    [any]: any,
 }
 
 type DeltaTable = LazyTable & {
-    __deletions: { any }
+    __deletions: { any },
 }
 
 type Self = typeof(module)
@@ -29,13 +29,13 @@ end
 
 --Compares two tables, and produces a new table containing the differences
 function module.MakeDeltaTable(self: Self, oldTable: any, newTable: any): (any, number)
-    if (oldTable == nil) then
+    if oldTable == nil then
         return Deep(newTable), 0
     end
-    
+
     local deltaTable = {}
     local changes = 0
-    
+
     for var, data in pairs(newTable) do
         if oldTable[var] == nil then
             deltaTable[var] = data
@@ -72,9 +72,9 @@ end
 
 --Produces a new table that is the combination of a target, and a deltaTable produced by MakeDeltaTable
 function module.ApplyDeltaTable(self: Self, target: any, deltaTable: any)
-	if (target == nil) then
-		target = {}
-	end
+    if target == nil then
+        target = {}
+    end
 
     local newTable = Deep(target)
     if newTable == nil then
@@ -83,7 +83,7 @@ function module.ApplyDeltaTable(self: Self, target: any, deltaTable: any)
 
     for var, _ in pairs(deltaTable) do
         if type(deltaTable[var]) == "table" then
-			newTable[var] = self:ApplyDeltaTable(target[var], deltaTable[var])
+            newTable[var] = self:ApplyDeltaTable(target[var], deltaTable[var])
         else
             newTable[var] = deltaTable[var]
         end
@@ -104,7 +104,7 @@ function module.DeepCopy(self: Self, sourceTable: any)
 end
 
 function module.DeepCopySharedTable(self: Self, sourceTable: any)
-	return Deep(sourceTable)
+    return Deep(sourceTable)
 end
 
 return module

@@ -11,25 +11,24 @@ type Self = typeof(module)
 	@param mod ModuleScript -- Individual ModuleScript to be loaded as a mod.
 ]=]
 function module.RegisterMod(self: Self, context: string, mod: ModuleScript)
-
     if not mod:IsA("ModuleScript") then
         warn("Attempted to load", mod:GetFullName(), "as a mod but it is not a ModuleScript")
         return
     end
 
     local contents = (require :: any)(mod)
-    
-    if (type(contents) ~= "table") then
+
+    if type(contents) ~= "table" then
         warn("Attempted to load", mod:GetFullName(), "as a mod, but it's not a table.")
         return
     end
-    
-    if (self.mods[context] == nil) then
+
+    if self.mods[context] == nil then
         self.mods[context] = {}
     end
 
-     --Mark the name and priorty
-    if (type(contents.GetPriority) == "function") then
+    --Mark the name and priorty
+    if type(contents.GetPriority) == "function" then
         contents.priority = contents:GetPriority()
     else
         contents.priority = 0
@@ -37,8 +36,8 @@ function module.RegisterMod(self: Self, context: string, mod: ModuleScript)
 
     contents.name = mod.Name
     table.insert(self.mods[context], contents)
-    
-    table.sort(self.mods[context], function(a,b)
+
+    table.sort(self.mods[context], function(a, b)
         return a.priority > b.priority
     end)
 end
@@ -61,16 +60,16 @@ function module.GetMod(self: Self, context: string, name: string)
     local list = self.mods[context]
 
     for key, contents in pairs(list) do
-        if (contents.name == name) then
+        if contents.name == name then
             return contents
-        end        
+        end
     end
-    
+
     return nil
 end
 
 function module.GetMods(self: Self, context: string)
-    if (self.mods[context] == nil) then
+    if self.mods[context] == nil then
         self.mods[context] = {}
     end
 

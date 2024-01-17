@@ -98,17 +98,17 @@ function module:SetFpsText(warningText)
 end
 
 function module:SetOtherFpsText(warningText)
-	self:GetGui()
+    self:GetGui()
 
-	if module.ui == nil then
-		return
-	end
+    if module.ui == nil then
+        return
+    end
 
-	local warning = module.ui.Frame.OtherFpsText
-	if warning == nil then
-		return
-	end
-	warning.Text = warningText
+    local warning = module.ui.Frame.OtherFpsText
+    if warning == nil then
+        return
+    end
+    warning.Text = warningText
 end
 
 function module:Scroll()
@@ -142,7 +142,7 @@ function module:GetGui()
     end
 
     if module.ui == nil then
-		module.ui = script.Parent:FindFirstChild("NetGraphUI"):Clone()
+        module.ui = script.Parent:FindFirstChild("NetGraphUI"):Clone()
         module.ui.Parent = game.Players.LocalPlayer.PlayerGui
     end
 

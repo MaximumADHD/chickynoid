@@ -16,28 +16,27 @@ module.OnBulletImpact = FastSignal.new()
 module.OnBulletFire = FastSignal.new()
 
 function module:HandleEvent(client, event)
-	if event.t == Enums.EventType.BulletImpact then
-		
+    if event.t == Enums.EventType.BulletImpact then
         --partially decode this packet so we can route it..
         local bitBuffer = event.b
 
-		--these two first!
-		local offset = 0
-		event.weaponId = buffer.readi16(bitBuffer,offset)
-		offset+=2
-		event.slot = buffer.readu8(bitBuffer, offset)
-		offset+=1
+        --these two first!
+        local offset = 0
+        event.weaponId = buffer.readi16(bitBuffer, offset)
+        offset += 2
+        event.slot = buffer.readu8(bitBuffer, offset)
+        offset += 1
 
         event.weaponModule = self:GetWeaponModuleByWeaponId(event.weaponId)
-        if (event.weaponModule == nil) then
+        if event.weaponModule == nil then
             return
         end
-        if (event.weaponModule.UnpackPacket) then
+        if event.weaponModule.UnpackPacket then
             event = event.weaponModule:UnpackPacket(event)
         end
-        
+
         --Append player
-		local player = client:GetPlayerDataBySlotId(event.slot)
+        local player = client:GetPlayerDataBySlotId(event.slot)
         if player == nil then
             return
         end
@@ -52,27 +51,26 @@ function module:HandleEvent(client, event)
     end
 
     if event.t == Enums.EventType.BulletFire then
-		
         --partially decode this packet so we can route it..
         local bitBuffer = event.b
 
-		--these two first!
-		local offset = 0
- 		event.weaponId = buffer.readi16(bitBuffer,offset)
-		offset+=2
-		event.slot = buffer.readu8(bitBuffer, offset)
-		offset+=1
+        --these two first!
+        local offset = 0
+        event.weaponId = buffer.readi16(bitBuffer, offset)
+        offset += 2
+        event.slot = buffer.readu8(bitBuffer, offset)
+        offset += 1
 
         event.weaponModule = self:GetWeaponModuleByWeaponId(event.weaponId)
-        if (event.weaponModule == nil) then
+        if event.weaponModule == nil then
             return
         end
-        if (event.weaponModule.UnpackPacket) then
+        if event.weaponModule.UnpackPacket then
             event = event.weaponModule:UnpackPacket(event)
         end
-        
+
         --Append player
-		local player = client:GetPlayerDataBySlotId(event.slot)
+        local player = client:GetPlayerDataBySlotId(event.slot)
         if player == nil then
             return
         end
@@ -95,8 +93,8 @@ function module:HandleEvent(client, event)
                 error("Weapon already added: " .. event.name .. " " .. event.serial)
                 return
             end
-            
-            local sourceModule = ClientMods:GetMod("weapons",event.name)
+
+            local sourceModule = ClientMods:GetMod("weapons", event.name)
             local weaponRecord = sourceModule.new()
             weaponRecord.serial = event.serial
             weaponRecord.name = event.name
@@ -108,7 +106,7 @@ function module:HandleEvent(client, event)
             weaponRecord.serverStateDirty = false
             weaponRecord.totalTime = 0
 
-			-- selene: allow(shadowing)
+            -- selene: allow(shadowing)
             function weaponRecord:SetPredictedState()
                 --Call this to delay the server from stomping on our state: eg: when firing rapidly
                 --when you let off the trigger this will allow the server state to take priority
@@ -130,9 +128,9 @@ function module:HandleEvent(client, event)
                     return
                 end
                 print("Removed ", weaponRecord.name)
-              
+
                 weaponRecord:ClientRemoved()
-              
+
                 self.weapons[weaponRecord.serial] = nil
             end
         end
@@ -165,7 +163,7 @@ function module:HandleEvent(client, event)
                     return
                 end
                 print("Equipped ", weaponRecord.name)
-                weaponRecord:ClientEquip();
+                weaponRecord:ClientEquip()
                 self.currentWeapon = weaponRecord
             end
         end
@@ -200,7 +198,6 @@ function module:Think(_predictedServerTime, deltaTime)
     if self.currentWeapon ~= nil then
         self.currentWeapon:ClientThink(deltaTime)
     end
-
 end
 
 function module:GetWeaponModuleByWeaponId(weaponId)
@@ -208,15 +205,12 @@ function module:GetWeaponModuleByWeaponId(weaponId)
 end
 
 function module:Setup(_client)
-
     local mods = ClientMods:GetMods("weapons")
-    for name,module in pairs(mods) do
-        
+    for name, module in pairs(mods) do
         local customWeapon = module.new()
         table.insert(self.customWeapons, customWeapon)
         --set the id
         customWeapon.weaponId = #self.customWeapons
-    
     end
 end
 

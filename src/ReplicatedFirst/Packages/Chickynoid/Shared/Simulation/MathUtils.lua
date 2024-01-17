@@ -55,7 +55,14 @@ function MathUtils.FlatVec(self: MathUtils, vec: Vector3)
 end
 
 --Redirects velocity
-function MathUtils.GroundAccelerate(self: MathUtils, wishDir: Vector3, wishSpeed: number, accel: number, velocity: Vector3, dt: number)
+function MathUtils.GroundAccelerate(
+    self: MathUtils,
+    wishDir: Vector3,
+    wishSpeed: number,
+    accel: number,
+    velocity: Vector3,
+    dt: number
+)
     --Cap velocity
     local speed = velocity.Magnitude
 
@@ -80,7 +87,14 @@ function MathUtils.GroundAccelerate(self: MathUtils, wishDir: Vector3, wishSpeed
     return velocity + (canPush * pushDir.Unit)
 end
 
-function MathUtils.Accelerate(self: MathUtils, wishDir: Vector3, wishSpeed: number, accel: number, velocity: Vector3, dt: number)
+function MathUtils.Accelerate(
+    self: MathUtils,
+    wishDir: Vector3,
+    wishSpeed: number,
+    accel: number,
+    velocity: Vector3,
+    dt: number
+)
     local speed = velocity.Magnitude
 
     local currentSpeed = velocity:Dot(wishDir)
@@ -119,7 +133,6 @@ function MathUtils.CapVelocity(self: MathUtils, velocity: Vector3, maxSpeed: num
     return Vector3.zero
 end
 
-
 function MathUtils.ClipVelocity(self: MathUtils, input: Vector3, normal: Vector3, overbounce: number)
     local backoff = input:Dot(normal)
 
@@ -140,8 +153,8 @@ end
 function MathUtils.SmoothLerp(self: MathUtils, variableA: any, variableB: any, fraction: number, deltaTime: number)
     local f = 1.0 - math.pow(1.0 - fraction, deltaTime)
 
-    if (type(variableA) == "number") then
-        return ((1-f) * variableA) + (variableB * f)
+    if type(variableA) == "number" then
+        return ((1 - f) * variableA) + (variableB * f)
     end
 
     return variableA:Lerp(variableB, f)

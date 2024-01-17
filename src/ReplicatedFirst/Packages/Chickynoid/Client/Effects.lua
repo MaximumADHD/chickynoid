@@ -110,18 +110,16 @@ RunService.Heartbeat:Connect(function(deltaTime)
 end)
 
 function Preload()
-	task.spawn(function()
-		
-		local list = {}
-		for key,value in module.root:GetDescendants() do
-			
-			if (value:IsA("ParticleEmitter")) then
-				table.insert(list, value.Texture)
-			end
-		end
-		print("Preloading ", #list, " assets")
-		game.ContentProvider:PreloadAsync(list)
-	end)
+    task.spawn(function()
+        local list = {}
+        for key, value in module.root:GetDescendants() do
+            if value:IsA("ParticleEmitter") then
+                table.insert(list, value.Texture)
+            end
+        end
+        print("Preloading ", #list, " assets")
+        game.ContentProvider:PreloadAsync(list)
+    end)
 end
 Preload()
 

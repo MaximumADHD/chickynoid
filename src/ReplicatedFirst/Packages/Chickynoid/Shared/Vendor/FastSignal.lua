@@ -29,15 +29,21 @@ ScriptConnection.__index = ScriptConnection
 	@ignore
 ]=]
 
-export type Class = typeof(setmetatable({} :: {
-    _active: boolean,
-    _head: ScriptConnectionNode?,
-}, ScriptSignal))
+export type Class = typeof(setmetatable(
+    {} :: {
+        _active: boolean,
+        _head: ScriptConnectionNode?,
+    },
+    ScriptSignal
+))
 
-export type ScriptConnection = typeof(setmetatable({} :: {
-    Connected: boolean,
-    _node: ScriptConnectionNode?,
-}, ScriptConnection))
+export type ScriptConnection = typeof(setmetatable(
+    {} :: {
+        Connected: boolean,
+        _node: ScriptConnectionNode?,
+    },
+    ScriptConnection
+))
 
 type ScriptConnectionNode = {
     _signal: Class,
@@ -215,7 +221,7 @@ end
 	@return ...any
 	@ignore
 ]=]
-function ScriptSignal.Wait(self: Class): (...any)
+function ScriptSignal.Wait(self: Class): ...any
     local thread
     do
         thread = coroutine.running()
@@ -248,7 +254,7 @@ end
 ]=]
 function ScriptSignal.Fire(self: Class, ...: any)
     local node = self._head
-    
+
     while node ~= nil do
         if node._connection ~= nil then
             if FreeThread == nil then
