@@ -4,7 +4,9 @@
 local Root = script.Parent.Parent
 local Vendor = Root.Vendor
 
+local AssetService = game:GetService("AssetService")
 local RunService = game:GetService("RunService")
+
 local TrianglePart = require(Vendor.TrianglePart)
 local QuickHull2 = require(Vendor.QuickHull2)
 
@@ -460,7 +462,14 @@ function module.GetPlanesForInstanceMeshPart(
     basePlaneNum: number,
     showDebugParentPart: BasePart?
 ): ({ HullRecord }?, number)
-    local sourcePoints = self:GetRaytraceInstancePoints(instance, cframe)
+    local success, editableMesh = pcall(function()
+        return AssetService:CreateEditableMeshFromPartAsync(instance)
+    end)
+    
+    local sourcePoints: {Vector3} = if success
+        then editableMesh:GetVertices()
+        else self:GetRaytraceInstancePoints(instance, cframe)
+
     local points = {}
 
     for _, point in pairs(sourcePoints) do
