@@ -695,20 +695,13 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
             -- Bind the camera
             if self.flags.HANDLE_CAMERA ~= false then
                 local camera = workspace.CurrentCamera
+                local model = self.characterModel.model
 
-                if self.flags.USE_PRIMARY_PART == true then
-                    --if you dont care about first person, this is the correct way to do it
-                    --for models with no humanoid (head tracking)
-                    if self.characterModel.model and self.characterModel.model.PrimaryPart then
-                        if camera.CameraSubject ~= self.characterModel.model.PrimaryPart then
-                            camera.CameraSubject = self.characterModel.model.PrimaryPart
-                            camera.CameraType = Enum.CameraType.Custom
-                        end
-                    end
-                else
-                    --if you do, set it to the model
-                    if self.characterModel.model and camera.CameraSubject ~= self.characterModel.model.PrimaryPart then
-                        camera.CameraSubject = self.characterModel.model
+                if model then
+                    local humanoid = model:FindFirstChildOfClass("Humanoid")
+
+                    if humanoid and camera.CameraSubject ~= humanoid then
+                        camera.CameraSubject = humanoid
                         camera.CameraType = Enum.CameraType.Custom
                     end
                 end
@@ -753,17 +746,19 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
 
             --Add the character
             if character == nil then
-                local record = {}
-                record.userId = userId
-
                 local mod = self:GetPlayerDataByUserId(userId)
 
+                
                 if mod then
+                    local record = {}
+                    record.userId = userId    
                     record.characterModel = CharacterModel.new(userId, mod.characterMod)
                     record.characterModel:CreateModel()
 
                     self.OnCharacterModelCreated:Fire(record.characterModel)
                     character = record
+
+                    self.characters[userId] = record
                 end
             end
 
