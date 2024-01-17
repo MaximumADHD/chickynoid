@@ -36,6 +36,9 @@ export type Class = typeof(setmetatable(
 type Self = typeof(CharacterData)
 
 local EPSILION = 0.00001
+local MAX_FLOAT16 = 0x10000
+local MAX_BYTE = 0xFF
+
 local Animations = require(script.Parent.Animations)
 local mathUtils = require(script.Parent.MathUtils)
 
@@ -55,12 +58,11 @@ local function Raw(_a: number, b: number, _frac: number)
     return b
 end
 
-local MAX_FLOAT16 = math.pow(2, 16)
+
 local function ValidateFloat16(float: number)
     return math.clamp(float, -MAX_FLOAT16, MAX_FLOAT16)
 end
 
-local MAX_BYTE = 255
 local function ValidateByte(byte: number)
     return math.clamp(byte, 0, MAX_BYTE)
 end
@@ -74,19 +76,7 @@ local function ValidateNumber(input: number)
 end
 
 local function CompareVector3(a: Vector3, b: Vector3)
-    if math.abs(a.X - b.X) > EPSILION or math.abs(a.Y - b.Y) > EPSILION or math.abs(a.Z - b.Z) > EPSILION then
-        return false
-    end
-
-    return true
-end
-
-local function CompareByte(a: number, b: number)
-    return a == b
-end
-
-local function CompareFloat16(a: number, b: number)
-    return a == b
+    return a:FuzzyEq(b, EPSILION)
 end
 
 local function CompareNumber(a: number, b: number)
@@ -95,56 +85,36 @@ end
 
 local function WriteVector3(buf: buffer, offset: number, value: Vector3): number
     buffer.writef32(buf, offset, value.X)
-    offset += 4
-
-    buffer.writef32(buf, offset, value.Y)
-    offset += 4
-
-    buffer.writef32(buf, offset, value.Z)
-    offset += 4
-
-    return offset
+    buffer.writef32(buf, offset + 4, value.Y)
+    buffer.writef32(buf, offset + 8, value.Z)
+    return offset + 12
 end
 
 local function ReadVector3(buf: buffer, offset: number)
     local x = buffer.readf32(buf, offset)
-    offset += 4
-
-    local y = buffer.readf32(buf, offset)
-    offset += 4
-
-    local z = buffer.readf32(buf, offset)
-    offset += 4
-
-    return Vector3.new(x, y, z), offset
+    local y = buffer.readf32(buf, offset + 4)
+    local z = buffer.readf32(buf, offset + 8)
+    return Vector3.new(x, y, z), offset + 12
 end
 
 local function WriteFloat32(buf: buffer, offset: number, value: number): number
     buffer.writef32(buf, offset, value)
-    offset += 4
-
     return offset + 4
 end
 
 local function ReadFloat32(buf: buffer, offset: number)
     local x = buffer.readf32(buf, offset)
-    offset += 4
-
-    return x, offset
+    return x, offset + 4
 end
 
 local function WriteByte(buf: buffer, offset: number, value: number): number
     buffer.writeu8(buf, offset, value)
-    offset += 1
-
-    return offset
+    return offset + 1
 end
 
 local function ReadByte(buf: buffer, offset: number)
     local x = buffer.readu8(buf, offset)
-    offset += 1
-
-    return x, offset
+    return x, offset + 1
 end
 
 local function WriteFloat16(buf: buffer, offset: number, value: number): number
@@ -155,65 +125,45 @@ local function WriteFloat16(buf: buffer, offset: number, value: number): number
 
     if value == math.huge then
         if sign then
-            buffer.writeu8(buf, offset, 252) -- 11111100
-            offset += 1
+            buffer.writeu8(buf, offset, 0b_11111100)
         else
-            buffer.writeu8(buf, offset, 124) -- 01111100
-            offset += 1
+            buffer.writeu8(buf, offset, 0b_01111100)
         end
 
-        buffer.writeu8(buf, offset, 0) -- 00000000
-        offset += 1
-
-        return offset
+        buffer.writeu8(buf, offset + 1, 0b_00000000)
+        return offset + 2
     elseif value ~= value or value == 0 then
-        buffer.writeu8(buf, offset, 0)
-        offset += 1
-
-        buffer.writeu8(buf, offset, 0)
-        offset += 1
-
-        return offset
+        buffer.writeu16(buf, offset, 0)
+        return offset + 2
     elseif exponent + 15 <= 1 then -- Bias for halfs is 15
         mantissa = math.floor(mantissa * 1024 + 0.5)
 
         if sign then
             buffer.writeu8(buf, offset, (128 + bit32.rshift(mantissa, 8))) -- Sign bit, 5 empty bits, 2 from mantissa
-            offset += 1
         else
             buffer.writeu8(buf, offset, (bit32.rshift(mantissa, 8)))
-            offset += 1
         end
 
-        buffer.writeu8(buf, offset, bit32.band(mantissa, 255)) -- Get last 8 bits from mantissa
-        offset += 1
-
-        return offset
+        buffer.writeu8(buf, offset + 1, bit32.band(mantissa, 255)) -- Get last 8 bits from mantissa
+        return offset + 2
     end
 
-    mantissa = math.floor((mantissa - 0.5) * 2048 + 0.5)
+    mantissa = ((mantissa - 0.5) * 2048 + 0.5) // 1
 
     -- The bias for halfs is 15, 15-1 is 14
     if sign then
         buffer.writeu8(buf, offset, (128 + bit32.lshift(exponent + 14, 2) + bit32.rshift(mantissa, 8)))
-        offset += 1
     else
         buffer.writeu8(buf, offset, (bit32.lshift(exponent + 14, 2) + bit32.rshift(mantissa, 8)))
-        offset += 1
     end
 
-    buffer.writeu8(buf, offset, bit32.band(mantissa, 255))
-    offset += 1
-
-    return offset
+    buffer.writeu8(buf, offset + 1, bit32.band(mantissa, 255))
+    return offset + 2
 end
 
 local function ReadFloat16(buf: buffer, offset: number)
     local b0 = buffer.readu8(buf, offset)
-    offset += 1
-
-    local b1 = buffer.readu8(buf, offset)
-    offset += 1
+    local b1 = buffer.readu8(buf, offset + 1)
 
     local sign = bit32.btest(b0, 128)
     local exponent = bit32.rshift(bit32.band(b0, 127), 2)
@@ -221,20 +171,20 @@ local function ReadFloat16(buf: buffer, offset: number)
 
     if exponent == 31 then --2^5-1
         if mantissa ~= 0 then
-            return (0 / 0), offset
+            return (0 / 0), offset + 2
         else
-            return (sign and -math.huge or math.huge), offset
+            return (sign and -math.huge or math.huge), offset + 2
         end
     elseif exponent == 0 then
         if mantissa == 0 then
-            return 0, offset
+            return 0, offset + 2
         else
-            return (sign and -math.ldexp(mantissa / 1024, -14) or math.ldexp(mantissa / 1024, -14)), offset
+            return (sign and -math.ldexp(mantissa / 1024, -14) or math.ldexp(mantissa / 1024, -14)), offset + 2
         end
     end
 
     mantissa = (mantissa / 1024) + 1
-    return (sign and -math.ldexp(mantissa, exponent - 15) or math.ldexp(mantissa, exponent - 15)), offset
+    return (sign and -math.ldexp(mantissa, exponent - 15) or math.ldexp(mantissa, exponent - 15)), offset + 2
 end
 
 function CharacterData.SetIsResimulating(self: Class, bool: boolean)
@@ -255,7 +205,7 @@ function CharacterData.ModuleSetup(self: Self)
         write = WriteFloat16,
         read = ReadFloat16,
         validate = ValidateFloat16,
-        compare = CompareFloat16,
+        compare = CompareNumber,
     }
 
     self.methods["Float32"] = {
@@ -269,7 +219,7 @@ function CharacterData.ModuleSetup(self: Self)
         write = WriteByte,
         read = ReadByte,
         validate = ValidateByte,
-        compare = CompareByte,
+        compare = CompareNumber,
     }
 
     self.packFunctions = {

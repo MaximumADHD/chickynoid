@@ -10,4 +10,4 @@ ServerModule.Setup()
 
 --bots?
 local Bots = require(script.Parent.Bots)
-Bots:MakeBots(ServerModule, 100)
+Bots:MakeBots(ServerModule, 20)
