@@ -47,6 +47,12 @@ type CharacterModel = CharacterModel.Class
 type LazyTable = DeltaTable.LazyTable
 type Self = typeof(ClientModule)
 
+type WorldPlayer = {
+    name: string,
+    userId: number,
+    characterMod: string
+}
+
 ClientModule.localChickynoid = nil :: ClientChickynoid?
 
 ClientModule.snapshots = {} :: {
@@ -75,7 +81,30 @@ ClientModule.characters = {} :: {
 
 ClientModule.localFrame = 0
 
-ClientModule.worldState = nil :: LazyTable? -- TODO: Type this properly.
+ClientModule.worldState = nil :: {
+    flags: {
+        [string]: boolean
+    },
+
+    players: {
+        [string]: WorldPlayer
+    },
+
+    fpsMode: number,
+    serverHz: number,
+
+    animations: {
+        [string]: {
+            name: string, 
+            length: number,
+            loop: boolean,
+            priority: number,
+            speed: number,
+            weight: number,
+            enabled: boolean
+        }
+    }
+}?
 
 ClientModule.fpsMax = 144 --Think carefully about changing this! Every extra frame clients make, puts load on the server
 ClientModule.fpsIsCapped = true --Dynamically sets to true if your fps is fpsMax + 5
@@ -404,9 +433,9 @@ function ClientModule.Setup(self: Self)
 	
     --Load the mods
     local mods = ClientMods:GetMods("clientmods")
-    for _, mod in mods do
+    for id, mod in mods do
         mod:Setup(self)
-		print("Loaded", _)
+		print("Loaded", id)
     end
 
     --WeaponModule
@@ -588,22 +617,25 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
             --Spawn the character in
 			print("Creating local model for UserId", game.Players.LocalPlayer.UserId)
 			local mod = self:GetPlayerDataByUserId(game.Players.LocalPlayer.UserId)
-            local charModel = CharacterModel.new( game.Players.LocalPlayer.UserId, mod.characterMod)
-			self.characterModel = charModel
 
-            for _, characterModelCallback in ipairs(self.characterModelCallbacks) do
-                charModel:SetCharacterModel(characterModelCallback)
+            if mod then
+                local charModel = CharacterModel.new( game.Players.LocalPlayer.UserId, mod.characterMod)
+                self.characterModel = charModel
+
+                for _, characterModelCallback in ipairs(self.characterModelCallbacks) do
+                    charModel:SetCharacterModel(characterModelCallback)
+                end
+
+                charModel:CreateModel()
+                self.OnCharacterModelCreated:Fire(charModel)
+                
+                local record = {}
+                record.userId = game.Players.LocalPlayer.UserId
+                record.characterModel = charModel
+                record.localPlayer = true
+
+                self.characters[record.userId] = record
             end
-
-			charModel:CreateModel()
-            self.OnCharacterModelCreated:Fire(charModel)
-			
-			local record = {}
-			record.userId = game.Players.LocalPlayer.UserId
-			record.characterModel = charModel
-			record.localPlayer = true
-
-			self.characters[record.userId] = record
         end
 
         if self.characterModel ~= nil then
@@ -725,13 +757,14 @@ function ClientModule.ProcessFrame(self: Self, deltaTime: number)
 				record.userId = userId
                 
 				local mod = self:GetPlayerDataByUserId(userId)
-				record.characterModel = CharacterModel.new(userId, mod.characterMod)
 
-                record.characterModel:CreateModel()
-                self.OnCharacterModelCreated:Fire(record.characterModel)
-                
-                -- Give it some dummy data so Luau will shut up.
-                character = record
+                if mod then
+                    record.characterModel = CharacterModel.new(userId, mod.characterMod)
+                    record.characterModel:CreateModel()
+
+                    self.OnCharacterModelCreated:Fire(record.characterModel)
+                    character = record
+                end
             end
 
             character.frame = self.localFrame
@@ -802,7 +835,7 @@ function ClientModule.SetCharacterModel(self: Self, callback: (userId: number) -
     table.insert(self.characterModelCallbacks, callback)
 end
 
-function ClientModule.GetPlayerDataBySlotId(self: Self, slotId: number)
+function ClientModule.GetPlayerDataBySlotId(self: Self, slotId: number): WorldPlayer?
 	local slotString = tostring(slotId)
 
 	if (self.worldState == nil) then
@@ -813,7 +846,7 @@ function ClientModule.GetPlayerDataBySlotId(self: Self, slotId: number)
 	return self.worldState.players[slotString]
 end
 
-function ClientModule:GetPlayerDataByUserId(userId: number): any -- TODO: Type properly.
+function ClientModule:GetPlayerDataByUserId(userId: number): WorldPlayer? -- TODO: Type properly.
 	if (self.worldState == nil) then
 		return nil
 	end
@@ -1024,9 +1057,9 @@ function ClientModule.AddPingToNetgraph(self: Self, mispredicted: boolean, serve
         NetGraph:AddBar(100, Color3.new(1, 0.666667, 0), 0)
 	end
 	--teal bar
-	--if networkProblem == Enums.NetworkProblemState.CommandUnderrun then
-	--	NetGraph:AddBar(100, Color3.new(0, 1, 1), 0)
-	--end
+	if networkProblem == Enums.NetworkProblemState.CommandUnderrun then
+		NetGraph:AddBar(100, Color3.new(0, 1, 1), 0)
+	end
 	
 	--Yellow bar
 	if networkProblem == Enums.NetworkProblemState.DroppedPacketGood then

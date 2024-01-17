@@ -25,7 +25,7 @@ type Command = CommandLayout.Command
 
 export type State = {
     name: string, 
-    updateState: (self: Class, cmd: Command) -> (), 
+    updateState: (self: Class, cmd: Command) -> ()?, 
     alwaysThink: (self: Class, cmd: Command) -> ()?,
     startState: (self: Class, prevState: string) -> ()?, 
     endState: (self: Class, nextState: string) -> ()?, 
@@ -45,6 +45,7 @@ type SimState = {
     jumpThrust: number,
     pushing: number,
     moveState: number,
+    [string]: number,
 }
 
 type SimConsts = {
@@ -63,6 +64,7 @@ type SimConsts = {
     crashLandBehavior: number,
     pushSpeed: number,
     stepSize: number,
+    [string]: number,
 }
 
 export type StateRecord = {
@@ -510,7 +512,7 @@ function Simulation.WriteState(self: Class): StateRecord
     return record
 end
 
-function Simulation.ReadState(self: Class, record: StateRecord)
+function Simulation.ReadState(self: Class, record: StateRecord): ()
     self.state = DeltaTable:DeepCopy(record.state)
     self.constants = DeltaTable:DeepCopy(record.constants)
 end

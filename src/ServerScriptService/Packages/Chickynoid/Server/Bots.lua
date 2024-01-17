@@ -1,5 +1,3 @@
-local Enums = require(game.ReplicatedFirst.Packages.Chickynoid.Shared.Enums)
-
 local path = game.ReplicatedFirst.Packages.Chickynoid
 local CommandLayout = require(path.Shared.Simulation.CommandLayout)
 
@@ -57,7 +55,7 @@ function module:MakeBots(Server, numBots)
 		userId = -userId
 				
 		
-		local playerRecord = Server:AddConnection(userId, nil)
+		local playerRecord = Server.AddConnection(userId, nil)
 		
 		if (playerRecord == nil) then
 			continue
@@ -65,9 +63,8 @@ function module:MakeBots(Server, numBots)
 		
 		playerRecord.name = "RandomBot" .. counter
 		playerRecord.respawnTime = tick() + counter * 0.1
-		playerRecord:HandlePlayerLoaded()		
+		Server.HandlePlayerLoaded(playerRecord)
 
-		
 		playerRecord.waitTime = 0 --Bot AI
 		playerRecord.leftOrRight = 1 
 
@@ -78,16 +75,12 @@ function module:MakeBots(Server, numBots)
 		--Spawn them in someplace
 		playerRecord.OnBeforePlayerSpawn:Connect(function()
 			playerRecord.chickynoid:SetPosition(Vector3.new(math.random(-350,350), 100 ,math.random(-350,350) ) + Vector3.new(-250, 0,0), true)
-			
 		end)
 		
 		 
 		table.insert(debugPlayers, playerRecord)
 
-	
 		playerRecord.BotThink = function(deltaTime)
-
-
 			if (playerRecord.waitTime > 0) then
 				playerRecord.waitTime -= deltaTime
 			end
@@ -120,7 +113,7 @@ function module:MakeBots(Server, numBots)
 			event[1] = CommandLayout:EncodeCommand(command)
 			playerRecord.frame += 1
 			if (playerRecord.chickynoid) then
-				playerRecord.chickynoid:HandleEvent(Server, event)
+				playerRecord.chickynoid:HandleEvent(Server.config, event)
 			end
 		end
 	end

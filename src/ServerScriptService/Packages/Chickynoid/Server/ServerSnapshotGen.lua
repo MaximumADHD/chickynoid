@@ -1,30 +1,60 @@
 --!native
 local module = {}
 
-local UnreliableRemoteEvent = game.ReplicatedStorage:WaitForChild("ChickynoidUnreliableReplication") :: RemoteEvent
-
 local path = game.ReplicatedFirst.Packages.Chickynoid
 local Profiler = require(path.Shared.Vendor.Profiler)
 local CharacterData = require(path.Shared.Simulation.CharacterData)
+local ServerChickynoid = require(script.Parent.ServerChickynoid)
 
-local DeltaTable = require(path.Shared.Vendor.DeltaTable)
 local Enums = require(path.Shared.Enums)
 local EventType = Enums.EventType
 local absoluteMaxSizeOfBuffer = 4096
 local smallBufferSize = 64
 local timeToKeepCache = 30 --in frames
-local doCRC = false
 
-local cache = {} 
+type Packet = {
+	recordCount: number?,
+	writeBuffer: buffer,
+	offset: number,
+}
 
-local function GetCacheItem(otherUserId, serverFrame, comparisonFrame)
+type CacheRecord = {
+	raw: Packet,
 	
+	comparisons: {
+		[number]: Packet
+	},
+}
+
+type Snapshot = {
+	t: number,
+	full: boolean,
+	b: buffer,
+	f: number,
+	cf: number,
+	serverTime: number,
+	s: number,
+	m: number?,
+}
+
+type Module = typeof(module)
+type PlayerRecord = ServerChickynoid.PlayerRecord
+
+local cache = {} :: {
+	[number]: { -- UserId
+		[number]: CacheRecord -- ServerFrame
+	}
+}
+
+local function GetCacheItem(otherUserId: number, serverFrame: number, comparisonFrame: number?)
 	local cacheLine = cache[otherUserId]
+
 	if (cacheLine == nil) then
 		return nil
 	end
 	
 	local rec = cacheLine[serverFrame]
+
 	if (rec == nil) then
 		return nil
 	end
@@ -38,9 +68,9 @@ local function GetCacheItem(otherUserId, serverFrame, comparisonFrame)
 	return subRec
 end
 
-local function StoreCacheItem(otherUserId, serverFrame, comparisonFrame, cacheRec)
-	
+local function StoreCacheItem(otherUserId: number, serverFrame: number, comparisonFrame: number?, cacheRec: Packet)
 	local cacheLine = cache[otherUserId]
+
 	if (cacheLine == nil) then
 		cacheLine = {}
 		cache[otherUserId] = cacheLine
@@ -69,26 +99,33 @@ local function StoreCacheItem(otherUserId, serverFrame, comparisonFrame, cacheRe
 	end
 end
 
-
-local function CreateAndQueueSnapshotPacket(currentPacket, playerRecord, fullSnapshot, queue, serverTotalFrames, serverSimulationTime, comparisonFrame)
+local function CreateAndQueueSnapshotPacket(
+	currentPacket: Packet, 
+	playerRecord: PlayerRecord, 
+	fullSnapshot: boolean, 
+	queue: {Snapshot}, 
+	serverTotalFrames: number, 
+	serverSimulationTime: number, 
+	comparisonFrame: number?
+)
 	local snapshot = {}
 	snapshot.t = EventType.Snapshot
 	snapshot.full = fullSnapshot
  
 	local finalBuffer = buffer.create(currentPacket.offset) 
-	buffer.copy(finalBuffer,0,currentPacket.writeBuffer,0,currentPacket.offset)
+	buffer.copy(finalBuffer, 0, currentPacket.writeBuffer, 0, currentPacket.offset)
  
 	snapshot.b = finalBuffer
 	snapshot.f = serverTotalFrames
 	snapshot.cf = comparisonFrame
 	snapshot.serverTime = serverSimulationTime
 	snapshot.s = #queue + 1
-	table.insert(queue,snapshot)
+	
+	table.insert(queue, snapshot)
 end
 
 
-function module:DoWork(playerRecords, serverTotalFrames, serverSimulationTime, debugBotBandwidth)
-	
+function module.DoWork(self: Module, playerRecords: {PlayerRecord}, serverTotalFrames: number, serverSimulationTime: number, debugBotBandwidth: boolean)
 	Profiler:BeginSample("BuildSnapshots")
 	
 	--generate
@@ -97,8 +134,7 @@ function module:DoWork(playerRecords, serverTotalFrames, serverSimulationTime, d
 	statistics.generated = 0
 	statistics.cached = 0
 	
-	for userId,playerRecord in playerRecords do
-		
+	for userId, playerRecord in next, playerRecords do
 		if (playerRecord.dummy == true and debugBotBandwidth == false) then
 			continue
 		end
@@ -107,32 +143,34 @@ function module:DoWork(playerRecords, serverTotalFrames, serverSimulationTime, d
 		local fullSnapshot = false
 		fullSnapshot = true
 
-		local currentPacket = nil
-		local series = 0
-		local queue = {}
+		local currentPacket: Packet?
+		local queue: {Snapshot} = {}
 		tempQueues[userId] = queue
 		
 		local comparisonFrame = playerRecord.lastConfirmedSnapshotServerFrame		
 		
 		--in case there are no other players visible
-		currentPacket = {}
-		currentPacket.writeBuffer = buffer.create(absoluteMaxSizeOfBuffer)
-		currentPacket.offset = 1 --skip a byte to write the recordCound
-		currentPacket.recordCount = 0
-				
+		currentPacket = {
+			writeBuffer = buffer.create(absoluteMaxSizeOfBuffer),
+			offset = 1, --skip a byte to write the recordCound
+			recordCount = 0,
+		}
+		
 		local visList = playerRecord.visibilityList
+
 		if (visList == nil) then
 			visList = playerRecords
 		end
+		
 		local comparisonVisList = playerRecord.visHistoryList[comparisonFrame]
+		
 		if (comparisonVisList == nil) then
 			comparisonVisList = {} --Assume we couldn't see anything 
 		end
 		
-		 
-		for _,otherPlayerRecord in visList do
-			
+		for i, otherPlayerRecord: PlayerRecord in next, visList do
 			local otherUserId = otherPlayerRecord.userId
+
 			if (otherUserId == userId) then
 				continue
 			end
@@ -140,22 +178,33 @@ function module:DoWork(playerRecords, serverTotalFrames, serverSimulationTime, d
 			if otherPlayerRecord.chickynoid == nil then
 				continue
 			end
-						
+			
 			local characterData = otherPlayerRecord.chickynoid.simulation.characterData
 			
-			--Create a new packet?					
+			--Create a new packet?
+			currentPacket = currentPacket or {
+				writeBuffer = buffer.create(absoluteMaxSizeOfBuffer),
+				offset = 1, --skip a byte to write the recordCound
+				recordCount = 0,
+			}
+						
 			if (currentPacket == nil) then
-				currentPacket = {}
-				currentPacket.writeBuffer = buffer.create(absoluteMaxSizeOfBuffer)
-				currentPacket.offset = 1 --skip a byte to write the recordCound
-				currentPacket.recordCount = 0
+				currentPacket = {
+					writeBuffer = buffer.create(absoluteMaxSizeOfBuffer),
+					offset = 1, --skip a byte to write the recordCound
+					recordCount = 0,
+				}
 			end
-			currentPacket.recordCount += 1
 			
 			local cachedBufferRec = nil
-						
+			assert(currentPacket ~= nil)
+
+			local recordCount = currentPacket.recordCount or 0
+			currentPacket.recordCount = recordCount + 1
+			
 			--if we could see them last time, look up our delta to them
 			local couldSeeThemLastTime = true
+
 			if (comparisonVisList[otherUserId] == nil) then
 				couldSeeThemLastTime = false
 			end 
@@ -167,10 +216,12 @@ function module:DoWork(playerRecords, serverTotalFrames, serverSimulationTime, d
 			if (cachedBufferRec == nil) then
 				--Generate the cached item
 				local prevCharacterData = nil
+
 				if (comparisonFrame ~= nil and couldSeeThemLastTime == true) then
 					--Find the previous character data to compare to
 					prevCharacterData = otherPlayerRecord.chickynoid.prevCharacterData[comparisonFrame]
 				end
+
 				local cacheRec = {}
 				cacheRec.writeBuffer = buffer.create(smallBufferSize)
 				buffer.writeu8(cacheRec.writeBuffer, 0, otherPlayerRecord.slot)
@@ -184,47 +235,44 @@ function module:DoWork(playerRecords, serverTotalFrames, serverSimulationTime, d
 					--store it and flag it as being a delta
 					StoreCacheItem(otherUserId, serverTotalFrames, comparisonFrame, cacheRec)
 				end
+
 				cachedBufferRec = cacheRec
-								
-				statistics.generated+=1
+				statistics.generated += 1
 			else
 				--print("got cached ", comparisonFrame)
 				statistics.cached += 1
 			end
 						
 			buffer.copy(currentPacket.writeBuffer, currentPacket.offset, cachedBufferRec.writeBuffer, 0, cachedBufferRec.offset)
-			currentPacket.offset+= cachedBufferRec.offset
+			currentPacket.offset += cachedBufferRec.offset
 
 			if (currentPacket.offset > 700) then
 				--Send snapshot
-				buffer.writeu8(currentPacket.writeBuffer, 0, currentPacket.recordCount)
+				buffer.writeu8(currentPacket.writeBuffer, 0, currentPacket.recordCount or 0)
 				CreateAndQueueSnapshotPacket(currentPacket, playerRecord, fullSnapshot, queue, serverTotalFrames, serverSimulationTime, comparisonFrame)
 				currentPacket = nil
 			end
 		end
 
-		--Wasn't finished, so finish the last one
+		-- Wasn't finished, so finish the last one
 		if (currentPacket ~= nil) then
-			buffer.writeu8(currentPacket.writeBuffer, 0, currentPacket.recordCount)
+			buffer.writeu8(currentPacket.writeBuffer, 0, currentPacket.recordCount or 0)
 			CreateAndQueueSnapshotPacket(currentPacket, playerRecord, fullSnapshot, queue, serverTotalFrames, serverSimulationTime, comparisonFrame)
 		end
 	end
-	
-	for userId,playerRecord in playerRecords do
 
+	for userId, playerRecord in next, playerRecords do
 		if playerRecord.dummy == false then
 			--Transmit!
 			local queue = tempQueues[userId]
 
-			for _,snapshot in queue do
+			for i, snapshot in queue do
 				snapshot.m = #queue
-				
 				playerRecord:SendUnreliableEventToClient(snapshot)
 			end
 		end
 	end
 	
-	--print(statistics.generated, " vs ", statistics.cached)
 	Profiler:EndSample()
 end
 

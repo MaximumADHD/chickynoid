@@ -1,22 +1,38 @@
 --!native
+--!strict
+
 local module = {}
 module.history = {}
 module.temporaryPositions = {}
 
 local path = game.ReplicatedFirst.Packages.Chickynoid
+local ServerChickynoid = require(script.Parent.ServerChickynoid)
 local Enums = require(path.Shared.Enums)
 
-function module:Setup(server)
+type PlayerRecord = ServerChickynoid.PlayerRecord
+type Self = typeof(module)
+
+type IServer = {
+    GetPlayers: (...any) -> {PlayerRecord},
+
+    flags: {
+        DEBUG_ANTILAG: boolean,
+        [any]: any,
+    }
+}
+
+function module.Setup(server: IServer)
     module.server = server
 end
 
-function module:WritePlayerPositions(serverTime)
-    local players = self.server:GetPlayers()
+function module.WritePlayerPositions(serverTime: number)
+    local players = module.server:GetPlayers()
 
     local snapshot = {}
     snapshot.serverTime = serverTime
     snapshot.players = {}
-    for _, playerRecord in pairs(players) do
+
+    for _, playerRecord in players do
         if playerRecord.chickynoid then
             local record = {}
             record.position = playerRecord.chickynoid.simulation.characterData:GetPosition() --get current visual position
@@ -24,19 +40,19 @@ function module:WritePlayerPositions(serverTime)
         end
     end
 
-    table.insert(self.history, snapshot)
+    table.insert(module.history, snapshot)
 
-    for counter = #self.history, 1, -1 do
-        local oldSnapshot = self.history[counter]
+    for counter = #module.history, 1, -1 do
+        local oldSnapshot = module.history[counter]
 
         --only keep 1s of history
         if oldSnapshot.serverTime < serverTime - 1 then
-            table.remove(self.history, counter)
+            table.remove(module.history, counter)
         end
     end
 end
 
-function module:PushPlayerPositionsToTime(playerRecord, serverTime, debugText)
+function module.PushPlayerPositionsToTime(self: Self, playerRecord: PlayerRecord, serverTime: number, debugText: string)
     local players = self.server:GetPlayers()
 
     if #self.temporaryPositions > 0 then
@@ -46,6 +62,7 @@ function module:PushPlayerPositionsToTime(playerRecord, serverTime, debugText)
     --find the two records
     local prevRecord = nil
     local nextRecord = nil
+
     for counter = #self.history - 1, 1, -1 do
         if self.history[counter].serverTime < serverTime then
             prevRecord = self.history[counter]
@@ -81,18 +98,21 @@ function module:PushPlayerPositionsToTime(playerRecord, serverTime, debugText)
         end
 
         local nextPlayerRecord = nextRecord.players[userId]
+
         if nextPlayerRecord == nil then
             continue
         end
 
         local otherPlayerRecord = players[userId]
-        if otherPlayerRecord == nil then
+
+        if not otherPlayerRecord then
             continue
         end
 
         if otherPlayerRecord.chickynoid == nil then
             continue
         end
+
         if otherPlayerRecord.chickynoid.hitBox then
             local oldPos = otherPlayerRecord.chickynoid.hitBox.Position
             self.temporaryPositions[userId] = oldPos --Store it
@@ -113,8 +133,8 @@ function module:PushPlayerPositionsToTime(playerRecord, serverTime, debugText)
     end
 end
 
-function module:Pop()
-    local players = self.server:GetPlayers()
+function module.Pop(self: Self)
+    local players: {PlayerRecord} = self.server:GetPlayers()
 
     for userId, pos in pairs(self.temporaryPositions) do
         local playerRecord = players[userId]

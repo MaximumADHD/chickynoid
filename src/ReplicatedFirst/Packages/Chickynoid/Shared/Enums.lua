@@ -25,7 +25,8 @@ Enums.NetworkProblemState = table.freeze({
 	TooFarAhead = 2,
 	TooManyCommands = 3,
 	DroppedPacketGood = 4,
-	DroppedPacketBad = 5
+	DroppedPacketBad = 5,
+	CommandUnderrun = 6,
 })
 
 Enums.FpsMode = table.freeze({

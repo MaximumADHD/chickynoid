@@ -332,8 +332,10 @@ function module.FetchHullsForBox(self: CollisionModule, min: Vector3, max: Vecto
                 local terrainHull = TerrainModule:FetchCell(x, y, z)
                 if terrainHull then
                     for i, hull in pairs(terrainHull) do
-                        hullMap[hull] = true
-                        hullCount += 1
+                        if not hullMap[hull] then
+                            hullMap[hull] = true
+                            hullCount += 1
+                        end
                     end
                 end
             end
@@ -373,12 +375,7 @@ function module.FetchHullsForBox(self: CollisionModule, min: Vector3, max: Vecto
     
 	--Inflate missing hulls
     for record in hullMap do
-        if not record.instance then
-            -- should never happen?
-            continue
-        end
-        
-    	if record.hull == nil then
+    	if record.hull == nil and record.instance then
             local hull = self:GenerateConvexHullAccurate(record.instance, module.expansionSize, self:GenerateSnappedCFrame(record.instance))
 			
             if hull then

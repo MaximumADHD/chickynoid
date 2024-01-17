@@ -1,4 +1,6 @@
 --!native
+--!strict
+
 --[=[
     @class ChickynoidServer
     @server
@@ -12,22 +14,6 @@ local RunService = game:GetService("RunService")
 
 local path = game.ReplicatedFirst.Packages.Chickynoid
 
-local Enums = require(path.Shared.Enums)
-local EventType = Enums.EventType
-local ServerChickynoid = require(script.Parent.ServerChickynoid)
-local CharacterData = require(path.Shared.Simulation.CharacterData)
-
-
-local DeltaTable = require(path.Shared.Vendor.DeltaTable)
-local WeaponsModule = require(script.Parent.WeaponsServer)
-local CollisionModule = require(path.Shared.Simulation.CollisionModule)
-local Antilag = require(script.Parent.Antilag)
-local FastSignal = require(path.Shared.Vendor.FastSignal)
-local ServerMods = require(script.Parent.ServerMods)
-local Animations = require(path.Shared.Simulation.Animations)
-
-local Profiler = require(path.Shared.Vendor.Profiler)
-
 local RemoteEvent = Instance.new("RemoteEvent")
 RemoteEvent.Name = "ChickynoidReplication"
 RemoteEvent.Parent = ReplicatedStorage
@@ -36,8 +22,20 @@ local UnreliableRemoteEvent = Instance.new("UnreliableRemoteEvent")
 UnreliableRemoteEvent.Name = "ChickynoidUnreliableReplication"
 UnreliableRemoteEvent.Parent = ReplicatedStorage
 
-local ServerSnapshotGen = require(script.Parent.ServerSnapshotGen)
+local Enums = require(path.Shared.Enums)
+local EventType = Enums.EventType
+local ServerChickynoid = require(script.Parent.ServerChickynoid)
+local CharacterData = require(path.Shared.Simulation.CharacterData)
+local PlayerRecord = ServerChickynoid.PlayerRecord
 
+local DeltaTable = require(path.Shared.Vendor.DeltaTable)
+local CollisionModule = require(path.Shared.Simulation.CollisionModule)
+local Antilag = require(script.Parent.Antilag)
+local FastSignal = require(path.Shared.Vendor.FastSignal)
+local ServerMods = require(script.Parent.ServerMods)
+local Animations = require(path.Shared.Simulation.Animations)
+
+local ServerSnapshotGen = require(script.Parent.ServerSnapshotGen)
 local ServerModule = {}
 
 ServerModule.playerRecords = {}
@@ -53,11 +51,14 @@ ServerModule.accumulatedTime = 0 --fps
 
 ServerModule.startTime = tick()
 ServerModule.slots = {}
-ServerModule.collisionRootFolder = nil
+ServerModule.collisionRootFolder = nil :: Folder?
 ServerModule.absoluteMaxSizeOfBuffer = 4096
-
 ServerModule.playerSize = Vector3.new(2, 5, 2)
 
+type FastSignal = FastSignal.Class
+type CharacterData = CharacterData.Class
+type ServerChickynoid = ServerChickynoid.Class
+type PlayerRecord = ServerChickynoid.PlayerRecord
 
 --[=[
 	@interface ServerConfig
@@ -72,6 +73,7 @@ ServerModule.config = {
 	fpsMode = Enums.FpsMode.Uncapped,
 	serverHz = 20,
 	antiWarp = false,
+	serverSimulationTime = ServerModule.serverSimulationTime,
 }
 
 --API
@@ -80,7 +82,6 @@ ServerModule.OnPlayerDespawn = FastSignal.new()
 ServerModule.OnBeforePlayerSpawn = FastSignal.new()
 ServerModule.OnPlayerConnected = FastSignal.new()	--Technically this is OnPlayerLoaded
 
-
 ServerModule.flags = {}
 ServerModule.flags.DEBUG_ANTILAG = false
 ServerModule.flags.DEBUG_BOT_BANDWIDTH = false
@@ -88,74 +89,75 @@ ServerModule.flags.DEBUG_BOT_BANDWIDTH = false
 --[=[
 	Creates connections so that Chickynoid can run on the server.
 ]=]
-function ServerModule:Setup()
-    self.worldRoot = self:GetDoNotReplicate()
+function ServerModule.Setup(): ()
+    ServerModule.worldRoot = ServerModule.GetDoNotReplicate()
 
-    Players.PlayerAdded:Connect(function(player)
-        self:PlayerConnected(player)
-    end)
+    Players.PlayerAdded:Connect(ServerModule.PlayerConnected)
 
     --If there are any players already connected, push them through the connection function
     for _, player in pairs(game.Players:GetPlayers()) do
-        self:PlayerConnected(player)
+        ServerModule.PlayerConnected(player)
     end
 
-    Players.PlayerRemoving:Connect(function(player)
-        self:PlayerDisconnected(player.UserId)
-    end)
+    Players.PlayerRemoving:Connect(ServerModule.PlayerDisconnected)
+    RunService.Heartbeat:Connect(ServerModule.RobloxHeartbeat)
+    RunService.Stepped:Connect(ServerModule.RobloxPhysicsStep)
 
-    RunService.Heartbeat:Connect(function(deltaTime)
-        self:RobloxHeartbeat(deltaTime)
-    end)
-
-    RunService.Stepped:Connect(function(_, deltaTime)
-        self:RobloxPhysicsStep(deltaTime)
-    end)
-
-    UnreliableRemoteEvent.OnServerEvent:Connect(function(player: Player, event)
-        local playerRecord = self:GetPlayerByUserId(player.UserId)
+    UnreliableRemoteEvent.OnServerEvent:Connect(function(player: Player, event: any)
+        local playerRecord = ServerModule.GetPlayerByUserId(player.UserId)
 
         if playerRecord then
-            if playerRecord.chickynoid then
-                playerRecord.chickynoid:HandleEvent(self, event)
+            if playerRecord.chickynoid and type(event) == "table" then
+                playerRecord.chickynoid:HandleEvent(ServerModule.config, event)
             end
         end
 	end)
 	
 	RemoteEvent.OnServerEvent:Connect(function(player: Player, event: any)
-		
 		--Handle events from loading players
-		local loadingPlayerRecord = ServerModule.loadingPlayerRecords[player.UserId]
+		local playerRecord = ServerModule.loadingPlayerRecords[player.UserId]
 		
-		if (loadingPlayerRecord ~= nil) then
+		if playerRecord then
 			if (event.id == "loaded") then
-				if (loadingPlayerRecord.loaded == false) then
-					loadingPlayerRecord:HandlePlayerLoaded()
-				end
+				ServerModule.HandlePlayerLoaded(playerRecord)
 			end
 			return
 		end
 		
 	end)
 	
-	Animations:ServerSetup()	
-
-    WeaponsModule:Setup(self)
-
-    Antilag:Setup(self)
+	Animations:ServerSetup()
+    Antilag.Setup(ServerModule)
 
     --Load the mods
     local modules = ServerMods:GetMods("servermods")
+
     for _, mod in pairs(modules) do
-        mod:Setup(self)
+        mod:Setup(ServerModule)
 		-- print("Loaded", _)
     end
 end
 
-function ServerModule:PlayerConnected(player)
-    local playerRecord = self:AddConnection(player.UserId, player)
+function ServerModule.HandlePlayerLoaded(playerRecord: PlayerRecord)
+	if (playerRecord.loaded == false) then
+		playerRecord.loaded = true
+
+		--Move them from loadingPlayerRecords to playerRecords
+		ServerModule.playerRecords[playerRecord.userId] = playerRecord		
+		ServerModule.loadingPlayerRecords[playerRecord.userId] = nil
+
+		local collisionRootFolder = assert(ServerModule.collisionRootFolder, "!! No collision root folder")
+		playerRecord:SendCollisionData(collisionRootFolder, ServerModule.playerSize)
 	
-	if (playerRecord) then
+		ServerModule.OnPlayerConnected:Fire(ServerModule, playerRecord)
+		ServerModule.SetWorldStateDirty()
+	end
+end
+
+function ServerModule.PlayerConnected(player: Player): ()
+    local playerRecord = ServerModule.AddConnection(player.UserId, player)
+	
+	if (playerRecord and playerRecord.player) then
 	    --Spawn the gui
 	    for _, child in pairs(game.StarterGui:GetChildren()) do
 	        local clone = child:Clone() :: ScreenGui
@@ -165,232 +167,73 @@ function ServerModule:PlayerConnected(player)
 	        clone.Parent = playerRecord.player.PlayerGui
 		end
 	end
-
 end
 
-function ServerModule:AssignSlot(playerRecord)
-	
+function ServerModule.AssignSlot(playerRecord: PlayerRecord): boolean
 	--Only place this is assigned
-    for j = 1, self.config.maxPlayers do
-        if self.slots[j] == nil then
-            self.slots[j] = playerRecord
+    for j = 1, ServerModule.config.maxPlayers do
+        if ServerModule.slots[j] == nil then
+            ServerModule.slots[j] = playerRecord
             playerRecord.slot = j
             return true
         end
     end
+
     warn("Slot not found!")
     return false
 end
 
-function ServerModule:AddConnection(userId, player)
-    if self.playerRecords[userId] ~= nil or self.loadingPlayerRecords[userId] ~= nil then
+function ServerModule.AddConnection(userId: number, player: Player?): PlayerRecord?
+    if ServerModule.playerRecords[userId] or ServerModule.loadingPlayerRecords[userId] then
         warn("Player was already connected.", userId)
-        self:PlayerDisconnected(userId)
+        ServerModule.PlayerDisconnected(userId)
     end
 
-    --Create the players server connection record
-    local playerRecord = {}
-    self.loadingPlayerRecords[userId] = playerRecord
-
-    playerRecord.userId = userId
+    -- Create the players server connection record
+	local playerRecord = PlayerRecord.new(userId, player)
+	ServerModule.loadingPlayerRecords[userId] = playerRecord
 	
-	playerRecord.slot = 0 -- starts 0, 0 is an invalid slot.
-	playerRecord.loaded = false
-	
-    playerRecord.previousCharacterData = nil
-    playerRecord.chickynoid = nil
-    playerRecord.frame = 0
-	
-	playerRecord.pendingWorldState = true
-    
-    playerRecord.allowedToSpawn = true
-    playerRecord.respawnDelay = 2
-    playerRecord.respawnTime = tick() + playerRecord.respawnDelay
+	local assignedSlot = ServerModule.AssignSlot(playerRecord)
+    ServerModule.DebugSlots()
 
-	playerRecord.OnBeforePlayerSpawn = FastSignal.new()
-	playerRecord.visHistoryList = {}
+	playerRecord.OnBeforePlayerSpawn:Connect(function()
+		ServerModule.OnPlayerSpawn:Fire(playerRecord)
+	end)
 
-    playerRecord.characterMod = "HumanoidChickynoid"
-	 	
-	playerRecord.lastConfirmedSnapshotServerFrame = nil --Stays nil til a player confirms they've seen a whole snapshot, for delta compression purposes
-		
-	local assignedSlot = self:AssignSlot(playerRecord)
-    self:DebugSlots()
     if (assignedSlot == false) then
 		if (player ~= nil) then
 			player:Kick("Server full, no free chickynoid slots")
 		end
-		self.loadingPlayerRecords[userId] = nil
+
+		ServerModule.loadingPlayerRecords[userId] = nil
 		return nil
 	end
 
-
-    playerRecord.player = player
-    if playerRecord.player ~= nil then
-        playerRecord.dummy = false
-        playerRecord.name = player.name
-    else
-        --Is a bot
-        playerRecord.dummy = true
-    end
-
-    -- selene: allow(shadowing)
-	function playerRecord:SendEventToClient(event)
-		if (playerRecord.loaded == false) then
-			print("warning, player not loaded yet")
-		end
-        if playerRecord.player then
-            RemoteEvent:FireClient(playerRecord.player, event)
-        end
-	end
-	
-	-- selene: allow(shadowing)
-	function playerRecord:SendUnreliableEventToClient(event)
-		if (playerRecord.loaded == false) then
-			print("warning, player not loaded yet")
-		end
-		if playerRecord.player then
-			UnreliableRemoteEvent:FireClient(playerRecord.player, event)
-		end
-	end
-
-    -- selene: allow(shadowing)
-    function playerRecord:SendEventToClients(event)
-        if playerRecord.player then
-			for _, record in ServerModule.playerRecords do
-				if record.loaded == false or record.dummy == true then
-					continue
-				end
-				RemoteEvent:FireClient(record.player, event)
-			end
-        end
-    end
-
-    -- selene: allow(shadowing)
-    function playerRecord:SendEventToOtherClients(event)
-		for _, record in ServerModule.playerRecords do
-			if record.loaded == false or record.dummy == true then
-				continue
-			end
-            if record == playerRecord then
-                continue
-            end
-            RemoteEvent:FireClient(record.player, event)
-        end
-    end
-
-    -- selene: allow(shadowing)
-    function playerRecord:SendCollisionData()
-       
-		if ServerModule.collisionRootFolder ~= nil then
-			local event = {}
-			event.t = Enums.EventType.CollisionData
-            event.playerSize = ServerModule.playerSize
-			event.data = ServerModule.collisionRootFolder
-			self:SendEventToClient(event)
-        end
-    end
-
-    -- selene: allow(shadowing)
-    function playerRecord:Despawn()
-        if self.chickynoid then
-            ServerModule.OnPlayerDespawn:Fire(self)
-
-            print("Despawned!")
-            self.chickynoid:Destroy()
-            self.chickynoid = nil
-            self.respawnTime = tick() + self.respawnDelay
-
-            local event = { t = EventType.ChickynoidRemoving }
-            playerRecord:SendEventToClient(event)
-        end
-    end
-
-    function playerRecord:SetCharacterMod(characterModName)
-		self.characterMod = characterModName
-		ServerModule:SetWorldStateDirty()
-    end
-
-    -- selene: allow(shadowing)
-	function playerRecord:Spawn()
-		
-		if (playerRecord.loaded == false) then
-			warn("Spawn() called before player loaded")
-			return
-		end
-        self:Despawn()
-
-        local chickynoid = ServerChickynoid.new(playerRecord)
-        self.chickynoid = chickynoid
-        chickynoid.playerRecord = self
-
-        local list = {}
-        for _, obj: SpawnLocation in pairs(workspace:GetDescendants()) do
-            if obj:IsA("SpawnLocation") and obj.Enabled == true then
-                table.insert(list, obj)
-            end
-        end
-
-        if #list > 0 then
-            local spawn = list[math.random(1, #list)]
-            self.chickynoid:SetPosition(Vector3.new(spawn.Position.x, spawn.Position.y + 5, spawn.Position.z), true)
-        else
-            self.chickynoid:SetPosition(Vector3.new(0, 10, 0), true)
-        end
-
-        self.OnBeforePlayerSpawn:Fire()
-        ServerModule.OnBeforePlayerSpawn:Fire(self, playerRecord)
-
-        chickynoid:SpawnChickynoid()
-
-        ServerModule.OnPlayerSpawn:Fire(self, playerRecord)
-        return self.chickynoid
-    end
-	
-	function playerRecord:HandlePlayerLoaded()
-
-		print("Player loaded:", playerRecord.name)
-		playerRecord.loaded = true
-
-		--Move them from loadingPlayerRecords to playerRecords
-		ServerModule.playerRecords[playerRecord.userId] = playerRecord		
-		ServerModule.loadingPlayerRecords[playerRecord.userId] = nil
-
-		self:SendCollisionData()
-
-		WeaponsModule:OnPlayerConnected(ServerModule, playerRecord)
-
-		ServerModule.OnPlayerConnected:Fire(ServerModule, playerRecord)
-		ServerModule:SetWorldStateDirty()
-	end
-
-	
     return playerRecord
 end
 
-function ServerModule:SendEventToClients(event)
+function ServerModule.SendEventToClients(event: any): ()
     RemoteEvent:FireAllClients(event)
 end
 
-function ServerModule:SetWorldStateDirty()
-	for _, data in pairs(self.playerRecords) do
+function ServerModule.SetWorldStateDirty(): ()
+	for _, data in next, ServerModule.playerRecords do
 		data.pendingWorldState = true
 	end
 end
 
-function ServerModule:SendWorldState(playerRecord)
-	
-	if (playerRecord.loaded == false) then
+function ServerModule.SendWorldState(playerRecord: PlayerRecord): ()
+	if not playerRecord.loaded or not playerRecord.pendingWorldState then
 		return
 	end
 	
     local event = {}
     event.t = Enums.EventType.WorldState
     event.worldState = {}
-    event.worldState.flags = self.flags
-
+    event.worldState.flags = ServerModule.flags
     event.worldState.players = {}
-    for _, data in pairs(self.playerRecords) do
+
+    for _, data in next, ServerModule.playerRecords do
         local info = {}
         info.name = data.name
 		info.userId = data.userId
@@ -398,114 +241,116 @@ function ServerModule:SendWorldState(playerRecord)
         event.worldState.players[tostring(data.slot)] = info
     end
 
-    event.worldState.serverHz = self.config.serverHz
-    event.worldState.fpsMode = self.config.fpsMode
+    event.worldState.serverHz = ServerModule.config.serverHz
+    event.worldState.fpsMode = ServerModule.config.fpsMode
 	event.worldState.animations = Animations.animations
-		
-	playerRecord:SendEventToClient(event)
 	
+	playerRecord:SendEventToClient(event)
 	playerRecord.pendingWorldState = false
 end
 
-function ServerModule:PlayerDisconnected(userId)
-	
-	local loadingPlayerRecord = self.loadingPlayerRecords[userId]
-	if (loadingPlayerRecord ~= nil) then
-		print("Player ".. loadingPlayerRecord.player.Name .. " disconnected")
-		self.loadingPlayerRecords[userId] = nil
-	end
-		
-	local playerRecord = self.playerRecords[userId]
-    if playerRecord then
-        print("Player ".. playerRecord.player.Name .. " disconnected")
+function ServerModule.PlayerDisconnected(userId: number): ()
+	local loadingPlayerRecord = ServerModule.loadingPlayerRecords[userId]
 
+	if loadingPlayerRecord then
+		if loadingPlayerRecord.player then
+			print("Player ".. loadingPlayerRecord.player.Name .. " disconnected")
+		end
+
+		ServerModule.loadingPlayerRecords[userId] = nil
+	end
+	
+	local playerRecord = ServerModule.playerRecords[userId]
+    
+	if playerRecord then
+		if playerRecord.player then
+        	print("Player ".. playerRecord.player.Name .. " disconnected")
+		end
+		
 		playerRecord:Despawn()
 		
 		--nil this out
 		playerRecord.previousCharacterData = nil
-		self.slots[playerRecord.slot] = nil
-		playerRecord.slot = nil
+		ServerModule.slots[playerRecord.slot] = nil
+		playerRecord.slot = 0
 		
-        self.playerRecords[userId] = nil
-
-        self:DebugSlots()
+        ServerModule.playerRecords[userId] = nil
+        ServerModule.DebugSlots()
     end
 
     --Tell everyone
-    for _, data in pairs(self.playerRecords) do
+    for _, data in next, ServerModule.playerRecords do
 		local event = {}
 		event.t = Enums.EventType.PlayerDisconnected
 		event.userId = userId
 		data:SendEventToClient(event)
 	end
-	self:SetWorldStateDirty()
+
+	ServerModule.SetWorldStateDirty()
 end
 
-function ServerModule:DebugSlots()
+function ServerModule.DebugSlots(): ()
     --print a count
     local free = 0
     local used = 0
-    for j = 1, self.config.maxPlayers do
-        if self.slots[j] == nil then
+
+    for j = 1, ServerModule.config.maxPlayers do
+        if not ServerModule.slots[j] then
             free += 1
-            
         else
             used += 1
         end
     end
+
     print("Players:", used, " (Free:", free, ")")
 end
 
-function ServerModule:GetPlayerByUserId(userId)
-    return self.playerRecords[userId]
+function ServerModule.GetPlayerByUserId(userId: number): PlayerRecord
+    return ServerModule.playerRecords[userId]
 end
 
-function ServerModule:GetPlayers()
-    return self.playerRecords
+function ServerModule.GetPlayers(): {PlayerRecord}
+    return ServerModule.playerRecords
 end
 
-function ServerModule:RobloxHeartbeat(deltaTime)
-
+function ServerModule.RobloxHeartbeat(deltaTime: number): ()
     if (false) then
-	    self.accumulatedTime += deltaTime
+	    ServerModule.accumulatedTime += deltaTime
 	    local frac = 1 / 60
 	    local maxSteps = 0
-	    while self.accumulatedTime > 0 do
-	        self.accumulatedTime -= frac
-	        self:Think(frac)
+	    while ServerModule.accumulatedTime > 0 do
+	        ServerModule.accumulatedTime -= frac
+	        ServerModule.Think(frac)
 	        
 	        maxSteps+=1
 	        if (maxSteps > 2) then
-	            self.accumulatedTime = 0
+	            ServerModule.accumulatedTime = 0
 	            break
 	        end
 	    end
 
 	      --Discard accumulated time if its a tiny fraction
 	    local errorSize = 0.001 --1ms
-	    if self.accumulatedTime > -errorSize then
-	        self.accumulatedTime = 0
+	    if ServerModule.accumulatedTime > -errorSize then
+	        ServerModule.accumulatedTime = 0
 	    end
 	else
-    
 	    --Much simpler - assumes server runs at 60.
-	    self.accumulatedTime = 0
-	    local frac = 1 / 60
-		self:Think(deltaTime)
+	    ServerModule.accumulatedTime = 0
+		ServerModule.Think(deltaTime)
 	end
-
-  
 end
 
-function ServerModule:RobloxPhysicsStep(deltaTime)
-    for _, playerRecord in pairs(self.playerRecords) do
+function ServerModule.RobloxPhysicsStep(deltaTime: number): ()
+    for _, playerRecord in ServerModule.GetPlayers() do
         if playerRecord.chickynoid then
-            playerRecord.chickynoid:RobloxPhysicsStep(self, deltaTime)
+			local worldRoot = ServerModule.GetDoNotReplicate()
+            playerRecord.chickynoid:RobloxPhysicsStep(worldRoot, deltaTime)
         end
     end
 end
 
-function ServerModule:GetDoNotReplicate()
+function ServerModule.GetDoNotReplicate(): Camera
     local camera = workspace:FindFirstChild("DoNotReplicate")
     if camera == nil then
         camera = Instance.new("Camera")
@@ -515,136 +360,121 @@ function ServerModule:GetDoNotReplicate()
     return camera
 end
 
-function ServerModule:UpdateTiming(deltaTime)
+function ServerModule.UpdateTiming(deltaTime: number): ()
 	--Do fps work
-	self.framesPerSecondCounter += 1
-	self.framesPerSecondTimer += deltaTime
-	if self.framesPerSecondTimer > 1 then
-		self.framesPerSecondTimer = math.fmod(self.framesPerSecondTimer, 1)
-		self.framesPerSecond = self.framesPerSecondCounter
-		self.framesPerSecondCounter = 0
+	ServerModule.framesPerSecondCounter += 1
+	ServerModule.framesPerSecondTimer += deltaTime
+	if ServerModule.framesPerSecondTimer > 1 then
+		ServerModule.framesPerSecondTimer = math.fmod(ServerModule.framesPerSecondTimer, 1)
+		ServerModule.framesPerSecond = ServerModule.framesPerSecondCounter
+		ServerModule.framesPerSecondCounter = 0
 	end
 
-	self.serverSimulationTime = tick() - self.startTime
+	ServerModule.serverSimulationTime = tick() - ServerModule.startTime
 end
 
-function ServerModule:Think(deltaTime)
-
-	self:UpdateTiming(deltaTime)
+function ServerModule.Think(deltaTime: number): ()
+	ServerModule.UpdateTiming(deltaTime)
+	ServerModule.SendWorldStates()
+	ServerModule.SpawnPlayers()
 	
-	self:SendWorldStates()
-		
-	self:SpawnPlayers()
-
     CollisionModule:UpdateDynamicParts()
 
-	self:UpdatePlayerThinks(deltaTime)
-
-	self:UpdatePlayerPostThinks(deltaTime)
-    
-    WeaponsModule:Think(self, deltaTime)
-	
-	self:StepServerMods(deltaTime)
-	
-	self:Do20HzOperations(deltaTime)
+	ServerModule.UpdatePlayerThinks(deltaTime)
+	ServerModule.UpdatePlayerPostThinks(deltaTime)
+	ServerModule.StepServerMods(deltaTime)
+	ServerModule.Do20HzOperations(deltaTime)
 end
 
-function ServerModule:StepServerMods(deltaTime)
+function ServerModule.StepServerMods(deltaTime: number): ()
 	--Step the server mods
 	local modules = ServerMods:GetMods("servermods")
 	for _, mod in pairs(modules) do
 		if (mod.Step) then
-			mod:Step(self, deltaTime)
+			mod:Step(ServerModule, deltaTime)
 		end
 	end
 end
 
 
-function ServerModule:Do20HzOperations(deltaTime)
+function ServerModule.Do20HzOperations(deltaTime: number): ()
 	
 	--Calc timings
-	self.serverStepTimer += deltaTime
-	self.serverTotalFrames += 1
+	ServerModule.serverStepTimer += deltaTime
+	ServerModule.serverTotalFrames += 1
 
-	local fraction = (1 / self.config.serverHz)
+	local fraction = (1 / ServerModule.config.serverHz)
 	
 	--Too soon
-	if self.serverStepTimer < fraction then
+	if ServerModule.serverStepTimer < fraction then
 		return
 	end
 		
-	while self.serverStepTimer > fraction do -- -_-'
-		self.serverStepTimer -= fraction
+	while ServerModule.serverStepTimer > fraction do -- -_-'
+		ServerModule.serverStepTimer -= fraction
 	end
 	
 	
-	self:WriteCharacterDataForSnapshots()
+	ServerModule.WriteCharacterDataForSnapshots()
 	
 	--Playerstate, for reconciliation of client prediction
-	self:UpdatePlayerStatesToPlayers()
+	ServerModule.UpdatePlayerStatesToPlayers()
 	
 	--we write the antilag at 20hz, to match when we replicate snapshots to players
-	Antilag:WritePlayerPositions(self.serverSimulationTime)
+	Antilag.WritePlayerPositions(ServerModule.serverSimulationTime)
 	
 	--Figures out who can see who, for replication purposes
-	self:DoPlayerVisibilityCalculations()
+	ServerModule.DoPlayerVisibilityCalculations()
 	
 	--Generate the snapshots for all players
-	self:WriteSnapshotsForPlayers()
- 
+	ServerModule.WriteSnapshotsForPlayers()
 end
 
 
-function ServerModule:WriteCharacterDataForSnapshots()
-	
-	for userId, playerRecord in pairs(self.playerRecords) do
+function ServerModule.WriteCharacterDataForSnapshots(): ()
+	for userId, playerRecord in next, ServerModule.playerRecords do
 		if (playerRecord.chickynoid == nil) then
 			continue
 		end
 		
 		--Grab a copy at this serverTotalFrame, because we're going to be referencing this for building snapshots with
-		playerRecord.chickynoid.prevCharacterData[self.serverTotalFrames] = DeltaTable:DeepCopy( playerRecord.chickynoid.simulation.characterData)
+		playerRecord.chickynoid.prevCharacterData[ServerModule.serverTotalFrames] = DeltaTable:DeepCopy( playerRecord.chickynoid.simulation.characterData )
 		
 		--Toss it out if its over a second old
 		for timeStamp, rec in playerRecord.chickynoid.prevCharacterData do
-			if (timeStamp < self.serverTotalFrames - 60) then
+			if (timeStamp < ServerModule.serverTotalFrames - 60) then
 				playerRecord.chickynoid.prevCharacterData[timeStamp] = nil
 			end
 		end
 	end
 end
 
-function ServerModule:UpdatePlayerStatesToPlayers()
-	
-	for userId, playerRecord in pairs(self.playerRecords) do
-
+function ServerModule.UpdatePlayerStatesToPlayers(): ()
+	for userId, playerRecord in next, ServerModule.playerRecords do
 		--Bots dont generate snapshots, unless we're testing for performance
-		if (self.flags.DEBUG_BOT_BANDWIDTH ~= true) then
+		if (ServerModule.flags.DEBUG_BOT_BANDWIDTH ~= true) then
 			if playerRecord.dummy == true then
 				continue
 			end
 		end			
 
 		if playerRecord.chickynoid ~= nil then
-
 			--see if we need to antiwarp people
 
-			if (self.config.antiWarp == true) then
+			if (ServerModule.config.antiWarp == true) then
 				local timeElapsed = playerRecord.chickynoid.processedTimeSinceLastSnapshot
-
-				local possibleStep = playerRecord.chickynoid.elapsedTime - playerRecord.chickynoid.playerElapsedTime
 
 				if (timeElapsed == 0 and playerRecord.chickynoid.lastProcessedCommand ~= nil) then
 					--This player didn't move this snapshot
 					playerRecord.chickynoid.errorState = Enums.NetworkProblemState.CommandUnderrun
 
-					local timeToPatchOver = 1 / self.config.serverHz
-					playerRecord.chickynoid:GenerateFakeCommand(self, timeToPatchOver)
+					local timeToPatchOver = 1 / ServerModule.config.serverHz
+					playerRecord.chickynoid:GenerateFakeCommand(ServerModule.config, timeToPatchOver)
 
 					--print("Adding fake command ", timeToPatchOver)
 
 					--Move them.
-					playerRecord.chickynoid:Think(self, self.serverSimulationTime, 0)
+					playerRecord.chickynoid:Think(ServerModule.serverSimulationTime)
 				end
 				--print("e:" , timeElapsed * 1000)
 			end
@@ -658,42 +488,39 @@ function ServerModule:UpdatePlayerStatesToPlayers()
 			
 			--bonus fields
 			event.e = playerRecord.chickynoid.errorState
-			event.s = self.framesPerSecond
+			event.s = ServerModule.framesPerSecond
 			
 			--required fields
 			event.lastConfirmedCommand = playerRecord.chickynoid.lastConfirmedCommand
-			event.serverTime = self.serverSimulationTime
-			event.serverFrame = self.serverTotalFrames
-			event.playerStateDelta, event.playerStateDeltaFrame = playerRecord.chickynoid:ConstructPlayerStateDelta(self.serverTotalFrames)
+			event.serverTime = ServerModule.serverSimulationTime
+			event.serverFrame = ServerModule.serverTotalFrames
+			event.playerStateDelta, event.playerStateDeltaFrame = playerRecord.chickynoid:ConstructPlayerStateDelta(ServerModule.serverTotalFrames)
 
 			playerRecord:SendUnreliableEventToClient(event)
 			
 			--Clear the error state flag 
 			playerRecord.chickynoid.errorState = Enums.NetworkProblemState.None
 		end
-
-
 	end
- 	
 end
 
-function ServerModule:SendWorldStates()
+function ServerModule.SendWorldStates(): ()
 	--send worldstate
-	for _, playerRecord in pairs(self.playerRecords) do
+	for _, playerRecord in next, ServerModule.playerRecords do
 		if (playerRecord.pendingWorldState == true) then
-			self:SendWorldState(playerRecord)
+			ServerModule.SendWorldState(playerRecord)
 		end	
 	end
 end
 
-function ServerModule:SpawnPlayers()
+function ServerModule.SpawnPlayers(): ()
 	--Spawn players
-	for _, playerRecord in self.playerRecords do
+	for _, playerRecord in next, ServerModule.playerRecords do
 		if (playerRecord.loaded == false) then
 			continue
 		end
 		
-		if (playerRecord.chickynoid ~= nil and playerRecord.reset == true) then
+		if (playerRecord.chickynoid and playerRecord.reset) then
 			playerRecord.reset = false
 			playerRecord:Despawn()
 		end
@@ -706,19 +533,18 @@ function ServerModule:SpawnPlayers()
 	end
 end
 
-function ServerModule:UpdatePlayerThinks(deltaTime)
-	
+function ServerModule.UpdatePlayerThinks(deltaTime: number): ()
 	debug.profilebegin("UpdatePlayerThinks")
 	--1st stage, pump the commands
-	for _, playerRecord in self.playerRecords do
-		if playerRecord.dummy == true then
+	for _, playerRecord in ServerModule.GetPlayers() do
+		if playerRecord.dummy == true and playerRecord.BotThink then
 			playerRecord.BotThink(deltaTime)
 		end
 
 		if playerRecord.chickynoid then
-			playerRecord.chickynoid:Think(self, self.serverSimulationTime, deltaTime)
+			playerRecord.chickynoid:Think(deltaTime)
 
-			if playerRecord.chickynoid.simulation.state.pos.y < -2000 then
+			if playerRecord.chickynoid.simulation.state.pos.Y < -2000 then
 				playerRecord:Despawn()
 			end
 		end
@@ -726,19 +552,16 @@ function ServerModule:UpdatePlayerThinks(deltaTime)
 	debug.profileend()
 end
 
-function ServerModule:UpdatePlayerPostThinks(deltaTime)
-	
-	
-	for _, playerRecord in self.playerRecords do
+function ServerModule.UpdatePlayerPostThinks(deltaTime: number): ()
+	for i, playerRecord in ServerModule.GetPlayers() do
 		if playerRecord.chickynoid then
-			playerRecord.chickynoid:PostThink(self, deltaTime)
+			local worldRoot = ServerModule.GetDoNotReplicate()
+			playerRecord.chickynoid:PostThink(worldRoot, deltaTime)
 		end
 	end
-	
 end
 
-function ServerModule:DoPlayerVisibilityCalculations()
-	
+function ServerModule.DoPlayerVisibilityCalculations(): ()
 	debug.profilebegin("DoPlayerVisibilityCalculations")
 	
 	--This gets done at 20hz
@@ -746,17 +569,20 @@ function ServerModule:DoPlayerVisibilityCalculations()
 	
 	for key,mod in modules do
 		if (mod.UpdateVisibility ~= nil) then
-			mod:UpdateVisibility(self, self.flags.DEBUG_BOT_BANDWIDTH)
+			mod:UpdateVisibility(ServerModule, ServerModule.flags.DEBUG_BOT_BANDWIDTH)
 		end
 	end
 	
-	
 	--Store the current visibility table for the current server frame
-	for userId, playerRecord in self.playerRecords do
-		playerRecord.visHistoryList[self.serverTotalFrames] = playerRecord.visibilityList
+	for userId, playerRecord in ServerModule.GetPlayers() do
+		local visibilityList = playerRecord.visibilityList
+
+		if visibilityList then
+			playerRecord.visHistoryList[ServerModule.serverTotalFrames] = visibilityList
+		end
 		
 		--Store two seconds tops
-		local cutoff = self.serverTotalFrames - 120
+		local cutoff = ServerModule.serverTotalFrames - 120
 		if (playerRecord.lastConfirmedSnapshotServerFrame ~= nil) then
 			cutoff = math.max(playerRecord.lastConfirmedSnapshotServerFrame, cutoff)
 		end
@@ -772,22 +598,19 @@ function ServerModule:DoPlayerVisibilityCalculations()
 end
 
  
-function ServerModule:WriteSnapshotsForPlayers()
- 	
-	ServerSnapshotGen:DoWork(self.playerRecords, self.serverTotalFrames, self.serverSimulationTime, self.flags.DEBUG_BOT_BANDWIDTH)
-	
-	self.serverLastSnapshotFrame = self.serverTotalFrames
-	
+function ServerModule.WriteSnapshotsForPlayers(): ()
+	ServerSnapshotGen:DoWork(ServerModule.playerRecords, ServerModule.serverTotalFrames, ServerModule.serverSimulationTime, ServerModule.flags.DEBUG_BOT_BANDWIDTH)
+	ServerModule.serverLastSnapshotFrame = ServerModule.serverTotalFrames
 end
 	
-function ServerModule:RecreateCollisions(rootFolder)
-    self.collisionRootFolder = rootFolder
+function ServerModule.RecreateCollisions(rootFolder: Folder): ()
+    ServerModule.collisionRootFolder = rootFolder
 
-    for _, playerRecord in self.playerRecords do
-        playerRecord:SendCollisionData()
+    for _, playerRecord in next, ServerModule.playerRecords do
+        playerRecord:SendCollisionData(rootFolder, ServerModule.playerSize)
     end
 
-    CollisionModule:MakeWorld(self.collisionRootFolder, self.playerSize) 
+    CollisionModule:MakeWorld(rootFolder, ServerModule.playerSize) 
 end
 
 return ServerModule

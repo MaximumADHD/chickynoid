@@ -363,10 +363,7 @@ function module.CreateAndFetchCell(self: Self, key: Vector3)
 	local cell = self.grid[key]
 
 	if (cell == nil) then
-		cell = {
-			instance = workspace.Terrain
-		}
-		
+		cell = {}
 		self.grid[key] = cell
 	end
     

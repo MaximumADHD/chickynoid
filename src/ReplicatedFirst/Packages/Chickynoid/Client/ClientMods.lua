@@ -9,7 +9,6 @@ type Self = typeof(module)
 	@param mod ModuleScript -- Individual ModuleScript to be loaded as a mod.
 ]=]
 function module.RegisterMod(self: Self, context: string, mod: ModuleScript)
-
     if not mod:IsA("ModuleScript") then
         warn("Attempted to load", mod:GetFullName(), "as a mod but it is not a ModuleScript")
         return

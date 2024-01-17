@@ -7,6 +7,10 @@ local module = {}
 type Self = typeof(module)
 type anyTable = { [any]: any }
 
+export type BinaryTable = {
+	_b: buffer
+}
+
 module.Enum = table.freeze({
 	FLOAT = 1,
 	VECTOR3 = 2,
@@ -84,7 +88,7 @@ function module.DeepCopy(self: Self, sourceTable: anyTable)
 	return Deep(sourceTable)
 end
 
-function module.BinaryEncodeTable(self: Self, srcData: anyTable, layout: Layout)
+function module.BinaryEncodeTable(self: Self, srcData: anyTable, layout: Layout): BinaryTable
 	local newPacket = Deep(srcData)
 	
 	local buf = buffer.create(layout.totalBytes)
@@ -145,9 +149,9 @@ function module.BinaryEncodeTable(self: Self, srcData: anyTable, layout: Layout)
 	--leave the other fields untouched
 	return newPacket	
 end
-	
 
-function module.BinaryDecodeTable(self: Self, srcData: anyTable, layout: Layout)
+
+function module.BinaryDecodeTable(self: Self, srcData: BinaryTable, layout: Layout): anyTable
 	local command = Deep(srcData)
 	assert(command._b, "missing _b field")
 	

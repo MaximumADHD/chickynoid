@@ -21,6 +21,14 @@ CharacterModel.modelPool = {} :: {
     Consumes a CharacterData 
 ]=]
 
+local dummyDesc = Instance.new("HumanoidDescription")
+dummyDesc.HeadColor = BrickColor.Yellow().Color
+dummyDesc.LeftArmColor = BrickColor.Yellow().Color
+dummyDesc.LeftLegColor = Color3.new()
+dummyDesc.RightArmColor = BrickColor.Yellow().Color
+dummyDesc.RightLegColor = Color3.new()
+dummyDesc.TorsoColor = Color3.fromHex("a3a2a5")
+
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
 
@@ -31,28 +39,6 @@ local Animations = require(path.Shared.Simulation.Animations)
 
 local CharacterData = require(path.Shared.Simulation.CharacterData)
 type CharacterDataRecord = CharacterData.DataRecord
-
-local r15Template: Model do
-	local dummyDesc = Instance.new("HumanoidDescription")
-
-	for i, bodyPart in Enum.BodyPart:GetEnumItems() do
-		(dummyDesc :: any)[`{bodyPart.Name}Color`] = Color3.fromHex("a3a2a5")
-	end
-
-	local rig = Players:CreateHumanoidModelFromDescription(dummyDesc, Enum.HumanoidRigType.R15)
-	local bodyColors = r15Template:FindFirstChildOfClass("BodyColors")
-	local animate = r15Template:FindFirstChild("Animate")
-
-	if animate then
-		animate:Destroy()
-	end
-
-	if bodyColors then
-		bodyColors:Destroy()
-	end
-
-	r15Template = rig
-end
 
 CharacterModel.template = nil
 CharacterModel.characterModelCallbacks = {}
@@ -81,7 +67,7 @@ export type Class = typeof(setmetatable({} :: {
 	modelReady: boolean?,
 	startingAnimation: string?,
 	userId: number,
-	characterMod: Model,
+	characterMod: string,
 	mispredict: Vector3,
 	onModelCreated: FastSignal,
 	onModelDestroyed: FastSignal,
@@ -90,7 +76,7 @@ export type Class = typeof(setmetatable({} :: {
 	coroutineStarted: boolean?,
 }, CharacterModel))
 
-function CharacterModel.new(userId: number, characterMod: Model): Class
+function CharacterModel.new(userId: number, characterMod: string): Class
 	local self = setmetatable({
 		model = nil,
 		tracks = {},
@@ -148,15 +134,19 @@ function CharacterModel.CreateModel(self: Class)
 
 			if not srcModel then
 				local userId = self.userId
+				local desc
 
 				--Bot id?
 				if userId < 0 then
-					userId = -userId
+					desc = dummyDesc:Clone()
+					desc.TorsoColor = Color3.fromHSV(math.random(), 1, 1)
+				else
+					desc = Players:GetHumanoidDescriptionFromUserId(userId)
 				end
 
-				local desc = Players:GetHumanoidDescriptionFromUserId(userId)
 				srcModel = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
 				assert(srcModel):SetAttribute("userid", userId)
+				assert(srcModel.PrimaryPart).Anchored = true
 			end
 			
 			local rootPart = assert(srcModel.PrimaryPart, "PrimaryPart not set in character model")
