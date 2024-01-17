@@ -21,16 +21,26 @@ CharacterModel.modelPool = {} :: {
     Consumes a CharacterData 
 ]=]
 
-local dummyDesc = Instance.new("HumanoidDescription")
-dummyDesc.HeadColor = BrickColor.Yellow().Color
-dummyDesc.LeftArmColor = BrickColor.Yellow().Color
-dummyDesc.LeftLegColor = Color3.new()
-dummyDesc.RightArmColor = BrickColor.Yellow().Color
-dummyDesc.RightLegColor = Color3.new()
-dummyDesc.TorsoColor = Color3.fromHex("a3a2a5")
-
 local Players = game:GetService("Players")
 local Lighting = game:GetService("Lighting")
+
+local r15Dummy do
+    local dummyDesc = Instance.new("HumanoidDescription")
+    dummyDesc.HeadColor = BrickColor.Yellow().Color
+    dummyDesc.LeftArmColor = BrickColor.Yellow().Color
+    dummyDesc.LeftLegColor = Color3.new()
+    dummyDesc.RightArmColor = BrickColor.Yellow().Color
+    dummyDesc.RightLegColor = Color3.new()
+    dummyDesc.TorsoColor = Color3.fromHex("a3a2a5")
+
+    local animate
+    r15Dummy = Players:CreateHumanoidModelFromDescription(dummyDesc, Enum.HumanoidRigType.R15)
+    animate = r15Dummy:FindFirstChild("Animate")
+
+    if animate and animate:IsA("Script") then
+        animate.Enabled = false
+    end
+end
 
 local path = game.ReplicatedFirst.Packages.Chickynoid
 local FastSignal = require(path.Shared.Vendor.FastSignal)
@@ -110,7 +120,7 @@ function CharacterModel.CreateModel(self: Class)
         self.coroutineStarted = true
 
         if self.modelPool[self.userId] == nil then
-            local srcModel: Model
+            local srcModel: Model?
 
             -- Download custom character
             for _, characterModelCallback in ipairs(self.characterModelCallbacks) do
@@ -135,25 +145,66 @@ function CharacterModel.CreateModel(self: Class)
                 end
             end
 
-            if not srcModel then
+            if srcModel == nil then
                 local userId = self.userId
-                local desc
+                srcModel = r15Dummy:Clone()
 
-                --Bot id?
-                if userId < 0 then
-                    desc = dummyDesc:Clone()
-                    desc.TorsoColor = Color3.fromHSV(math.random(), 1, 1)
-                else
-                    desc = Players:GetHumanoidDescriptionFromUserId(userId)
+                local player = Players:GetPlayerByUserId(userId)
+                local bodyColors = assert(srcModel):FindFirstChildOfClass("BodyColors")
+                local humanoid = srcModel:FindFirstChildOfClass("Humanoid")
+                local rootPart = srcModel.PrimaryPart
+
+                if bodyColors then
+                    bodyColors.TorsoColor3 = Color3.fromHSV((self.userId / 100) % 1, 1, 1)
                 end
 
-                srcModel = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
-                assert(srcModel):SetAttribute("userid", userId)
-                assert(srcModel.PrimaryPart).Anchored = true
+                if rootPart then
+                    rootPart.Anchored = true
+                end
+                
+                if player then
+                    srcModel.Name = player.Name
+                end
+
+                srcModel.Parent = Lighting
+                srcModel:SetAttribute("UserId", userId)
+                
+                if humanoid then
+                    humanoid.EvaluateStateMachine = false
+
+                    if player then
+                        if player == Players.LocalPlayer then
+                            humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+                        end
+
+                        humanoid.DisplayName = player.DisplayName
+                    end
+                end
+
+                if userId > 0 then
+                    for retry = 1, 5 do
+                        local success, desc = pcall(function ()
+                            return Players:GetHumanoidDescriptionFromUserId(userId)
+                        end)
+
+                        if success and humanoid then
+                            desc.DepthScale = 1
+                            desc.WidthScale = 1
+                            desc.HeightScale = 1
+                            desc.BodyTypeScale = 0
+                            desc.ProportionScale = 0
+
+                            humanoid:ApplyDescription(desc)
+                            break
+                        else
+                            task.wait(retry / 2)
+                        end
+                    end
+                end
             end
 
+            local humanoid = assert(srcModel):FindFirstChildOfClass("Humanoid")
             local rootPart = assert(srcModel.PrimaryPart, "PrimaryPart not set in character model")
-            local humanoid = srcModel:FindFirstChildOfClass("Humanoid")
             assert(humanoid, "Humanoid not found in character model")
 
             --setup the hip
@@ -184,17 +235,39 @@ function CharacterModel.CreateModel(self: Class)
         self.tracks = {}
         model.Parent = Lighting
 
-        for _, value in pairs(animator:GetChildren()) do
-            if value:IsA("Animation") then
-                local track = animator:LoadAnimation(value)
-                self.tracks[value.Name] = track
+        local function onDescendantAdded(desc: Instance)
+            if desc:IsA("Animation") then
+                local weight = 1
+                local parent = desc.Parent
+
+                if parent and parent:IsA("ValueBase") then
+                    local name = parent.Name:gsub("^[a-z]", string.upper)
+                    local weightRef = desc:FindFirstChild("Weight")
+                    local existing = self.tracks[name]
+
+                    if weightRef and weightRef:IsA("NumberValue") then
+                        weight = weightRef.Value
+                    end
+
+                    if not existing or (existing:GetAttribute("Weight") or 0) < weight then
+                        local track = animator:LoadAnimation(desc)
+                        track:SetAttribute("Weight", weight)
+                        self.tracks[name] = track
+                    end
+                end
             end
+        end
+
+        for i, desc in model:GetDescendants() do
+            onDescendantAdded(desc)
         end
 
         self.modelReady = true
         self:PlayAnimation(self.startingAnimation, true)
 
         model.Parent = workspace
+        model.DescendantAdded:Connect(onDescendantAdded)
+
         self.onModelCreated:Fire(self.model)
         self.coroutineStarted = false
     end)

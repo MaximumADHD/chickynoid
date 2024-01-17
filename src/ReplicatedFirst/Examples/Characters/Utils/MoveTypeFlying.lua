@@ -67,7 +67,7 @@ function module.ActiveThink(simulation: Simulation, cmd: Command)
             cmd.deltaTime
         )
 
-        simulation.characterData:PlayAnimation("Walk", Enums.AnimChannel.Channel0, false)
+        simulation.characterData:PlayAnimation("Run", Enums.AnimChannel.Channel0, false)
     else
         simulation.characterData:PlayAnimation("Idle", Enums.AnimChannel.Channel0, false)
     end

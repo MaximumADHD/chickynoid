@@ -10,4 +10,8 @@ ServerModule.Setup()
 
 --bots?
 local Bots = require(script.Parent.Bots)
-Bots:MakeBots(ServerModule, 20)
+local botsToMake = workspace:GetAttribute("Bots")
+
+if type(botsToMake) == "number" then
+    Bots:MakeBots(ServerModule, botsToMake)
+end
