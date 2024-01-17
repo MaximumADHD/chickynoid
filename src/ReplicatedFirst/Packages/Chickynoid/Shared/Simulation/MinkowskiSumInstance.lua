@@ -4,7 +4,9 @@
 local Root = script.Parent.Parent
 local Vendor = Root.Vendor
 
+local AssetService = game:GetService("AssetService")
 local RunService = game:GetService("RunService")
+
 local TrianglePart = require(Vendor.TrianglePart)
 local QuickHull2 = require(Vendor.QuickHull2)
 
@@ -292,6 +294,16 @@ function module.GeneratePointsForInstance(self: Self, instance: Instance, player
     return points
 end
 
+local function AddUnique(list: { Vector3 }, point: Vector3)
+    for key, value in pairs(list) do
+        if value:FuzzyEq(point, 0.1) then
+            return
+        end
+    end
+
+    table.insert(list, point)
+end
+
 --As they say - if it's stupid and it works...
 --So the idea here is we scale a mesh down to 1,1,1
 --Fire a grid of rays at it
@@ -300,129 +312,137 @@ function module.GetRaytraceInstancePoints(self: Self, instance: MeshPart, cframe
     local start = tick()
     local points = self.meshCache[instance.MeshId]
 
-    if points == nil then
-        print("Raytracing ", instance.Name, instance.MeshId)
-        points = {}
-        local step = 0.2
+	if points == nil then
+		points = {}
+		self.meshCache[instance.MeshId] = points
 
-        local function AddUnique(list: { Vector3 }, point: Vector3)
-            for key, value in pairs(list) do
-                if (value - point).Magnitude < 0.1 then
-                    return
+        task.spawn(function ()
+            local success, editableMesh = pcall(function ()
+                return AssetService:CreateEditableMeshFromPartAsync(instance)
+            end)
+
+            if success then
+                local meshSize = instance.MeshSize
+                print("Reading EditableMesh", instance.Name, instance.MeshId)
+
+                for _, vertexId in editableMesh:GetVertices() do
+                    local vertex = editableMesh:GetPosition(vertexId)
+                    AddUnique(points, vertex / meshSize)
                 end
-            end
-            table.insert(list, point)
-        end
+            else
+                local step = 0.2
+                print("Raytracing", instance.Name, instance.MeshId)
 
-        local meshCopy = instance:Clone()
-        meshCopy.CFrame = CFrame.identity
-        meshCopy.Size = Vector3.one
-        meshCopy.Parent = workspace
-        meshCopy.CanQuery = true
+                local meshCopy = instance:Clone()
+                meshCopy.CFrame = CFrame.identity
+                meshCopy.Size = Vector3.one
+                meshCopy.Parent = workspace
+                meshCopy.CanQuery = true
 
-        local raycastParam = RaycastParams.new()
-        raycastParam.FilterType = Enum.RaycastFilterType.Include
-        raycastParam.FilterDescendantsInstances = { meshCopy }
+                local raycastParam = RaycastParams.new()
+                raycastParam.FilterType = Enum.RaycastFilterType.Include
+                raycastParam.FilterDescendantsInstances = { meshCopy }
 
-        for x = -0.5, 0.5, step do
-            for y = -0.5, 0.5, step do
-                local pos = Vector3.new(x, -2, y)
-                local dir = Vector3.new(0, 4, 0)
-                local result = workspace:Raycast(pos, dir, raycastParam)
-                if result then
-                    AddUnique(points, result.Position)
+                for x = -0.5, 0.5, step do
+                    for y = -0.5, 0.5, step do
+                        local pos = Vector3.new(x, -2, y)
+                        local dir = Vector3.new(0, 4, 0)
+                        local result = workspace:Raycast(pos, dir, raycastParam)
+                        if result then
+                            AddUnique(points, result.Position)
 
-                    --we hit something, trace from the other side too
-                    pos = Vector3.new(x, 2, y)
-                    dir = Vector3.new(0, -4, 0)
-                    result = workspace:Raycast(pos, dir, raycastParam)
+                            --we hit something, trace from the other side too
+                            pos = Vector3.new(x, 2, y)
+                            dir = Vector3.new(0, -4, 0)
+                            result = workspace:Raycast(pos, dir, raycastParam)
 
-                    if result then
-                        AddUnique(points, result.Position)
+                            if result then
+                                AddUnique(points, result.Position)
+                            end
+                        end
                     end
                 end
-            end
-        end
 
-        for x = -0.5, 0.5, step do
-            for y = -0.5, 0.5, step do
-                local pos = Vector3.new(-2, x, y)
-                local dir = Vector3.new(4, 0, 0)
-                local result = workspace:Raycast(pos, dir, raycastParam)
-                if result then
-                    AddUnique(points, result.Position)
+                for x = -0.5, 0.5, step do
+                    for y = -0.5, 0.5, step do
+                        local pos = Vector3.new(-2, x, y)
+                        local dir = Vector3.new(4, 0, 0)
+                        local result = workspace:Raycast(pos, dir, raycastParam)
+                        if result then
+                            AddUnique(points, result.Position)
 
-                    --we hit something, trace from the other side too
-                    pos = Vector3.new(2, x, y)
-                    dir = Vector3.new(-4, 0, 0)
-                    result = workspace:Raycast(pos, dir, raycastParam)
-                    if result then
-                        AddUnique(points, result.Position)
+                            --we hit something, trace from the other side too
+                            pos = Vector3.new(2, x, y)
+                            dir = Vector3.new(-4, 0, 0)
+                            result = workspace:Raycast(pos, dir, raycastParam)
+                            if result then
+                                AddUnique(points, result.Position)
+                            end
+                        end
                     end
                 end
-            end
-        end
 
-        for x = -0.5, 0.5, step do
-            for y = -0.5, 0.5, step do
-                local pos = Vector3.new(x, y, -2)
-                local dir = Vector3.new(0, 0, 4)
-                local result = workspace:Raycast(pos, dir, raycastParam)
-                if result then
-                    AddUnique(points, result.Position)
+                for x = -0.5, 0.5, step do
+                    for y = -0.5, 0.5, step do
+                        local pos = Vector3.new(x, y, -2)
+                        local dir = Vector3.new(0, 0, 4)
+                        local result = workspace:Raycast(pos, dir, raycastParam)
+                        if result then
+                            AddUnique(points, result.Position)
 
-                    --we hit something, trace from the other side too
-                    pos = Vector3.new(x, y, 2)
-                    dir = Vector3.new(0, 0, -4)
-                    result = workspace:Raycast(pos, dir, raycastParam)
-                    if result then
-                        AddUnique(points, result.Position)
+                            --we hit something, trace from the other side too
+                            pos = Vector3.new(x, y, 2)
+                            dir = Vector3.new(0, 0, -4)
+                            result = workspace:Raycast(pos, dir, raycastParam)
+                            if result then
+                                AddUnique(points, result.Position)
+                            end
+                        end
                     end
                 end
-            end
-        end
 
-        meshCopy:Destroy()
+                meshCopy:Destroy()
+			end
+			
+			--Optimize the points down
+			local hull = QuickHull2.GenerateHull(points)
 
-        --Optimize the points down
-        local hull = QuickHull2.GenerateHull(points)
+			if hull ~= nil then
+				local recs = {}
 
-        if hull ~= nil then
-            local recs = {}
+				for _, tri in pairs(hull) do
+					local normal = (tri[1] - tri[2]):Cross(tri[1] - tri[3]).Unit
+					local ed = tri[1]:Dot(normal) --expanded distance
 
-            for _, tri in pairs(hull) do
-                local normal = (tri[1] - tri[2]):Cross(tri[1] - tri[3]).Unit
-                local ed = tri[1]:Dot(normal) --expanded distance
+					if IsUnique(recs, normal, ed) then
+						table.insert(recs, {
+							planeNum = -1, -- FIXME: This was nil before, might cause problems later.
+							n = normal,
+							ed = ed, --expanded
+							tri = tri,
+						})
+					end
+				end
+				points = {}
+				for key, record in pairs(recs) do
+					local tri = record.tri
 
-                if IsUnique(recs, normal, ed) then
-                    table.insert(recs, {
-                        planeNum = -1, -- FIXME: This was nil before, might cause problems later.
-                        n = normal,
-                        ed = ed, --expanded
-                        tri = tri,
-                    })
-                end
-            end
-            points = {}
-            for key, record in pairs(recs) do
-                local tri = record.tri
-
-                if tri then
-                    if IsUniquePoint(points, tri[1]) then
-                        table.insert(points, tri[1])
-                    end
-                    if IsUniquePoint(points, tri[2]) then
-                        table.insert(points, tri[2])
-                    end
-                    if IsUniquePoint(points, tri[3]) then
-                        table.insert(points, tri[3])
-                    end
-                end
-            end
-            self.meshCache[instance.MeshId] = points
-        else
-            self.meshCache[instance.MeshId] = {}
-        end
+					if tri then
+						if IsUniquePoint(points, tri[1]) then
+							table.insert(points, tri[1])
+						end
+						if IsUniquePoint(points, tri[2]) then
+							table.insert(points, tri[2])
+						end
+						if IsUniquePoint(points, tri[3]) then
+							table.insert(points, tri[3])
+						end
+					end
+				end
+			else
+				self.meshCache[instance.MeshId] = {}
+			end
+        end)
     end
 
     local finals = {}
