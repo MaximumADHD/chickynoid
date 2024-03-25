@@ -2,6 +2,7 @@
 --!strict
 
 local path = game.ReplicatedFirst.Packages.Chickynoid
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RemoteEvent = ReplicatedStorage:WaitForChild("ChickynoidReplication")
@@ -140,8 +141,8 @@ function PlayerRecord.new(userId: number, player: Player?): PlayerRecord
         frame = 0,
         slot = 0,
         allowedToSpawn = true,
-        respawnDelay = 2,
-        respawnTime = tick() + 2,
+        respawnDelay = Players.RespawnTime,
+        respawnTime = tick() + Players.RespawnTime,
         characterMod = "HumanoidChickynoid",
         lastConfirmedSnapshotServerFrame = nil,
 
@@ -248,6 +249,7 @@ function PlayerRecord.Despawn(self: PlayerRecord): ()
         print("Despawned!")
         self.chickynoid:Destroy()
         self.chickynoid = nil
+        self.respawnDelay = Players.RespawnTime
         self.respawnTime = tick() + self.respawnDelay
 
         local event = { t = EventType.ChickynoidRemoving }

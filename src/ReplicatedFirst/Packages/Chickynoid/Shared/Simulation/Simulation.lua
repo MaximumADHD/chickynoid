@@ -616,7 +616,7 @@ function Simulation.MovetypeWalking(self: Class, cmd)
 
             flatVel = MathUtils:GroundAccelerate(
                 wishDir,
-                self.constants.maxSpeed,
+                self.constants.maxSpeed * cmd.magnitude,
                 self.constants.accel,
                 flatVel,
                 cmd.deltaTime
