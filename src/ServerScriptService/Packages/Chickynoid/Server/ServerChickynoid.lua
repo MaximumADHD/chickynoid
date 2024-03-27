@@ -2,7 +2,6 @@
 --!strict
 
 local path = game.ReplicatedFirst.Packages.Chickynoid
-local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local RemoteEvent = ReplicatedStorage:WaitForChild("ChickynoidReplication")
