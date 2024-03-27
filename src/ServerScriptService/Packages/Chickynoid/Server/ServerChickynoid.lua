@@ -141,8 +141,8 @@ function PlayerRecord.new(userId: number, player: Player?): PlayerRecord
         frame = 0,
         slot = 0,
         allowedToSpawn = true,
-        respawnDelay = Players.RespawnTime,
-        respawnTime = tick() + Players.RespawnTime,
+        respawnDelay = 2,
+        respawnTime = tick() + 2,
         characterMod = "HumanoidChickynoid",
         lastConfirmedSnapshotServerFrame = nil,
 
